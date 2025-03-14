@@ -14,7 +14,10 @@ import ru.bot.demobot.model.User;
 import ru.bot.demobot.repository.ExerciseRepository;
 import ru.bot.demobot.repository.UserRepository;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class TelegramBot extends TelegramLongPollingBot {
@@ -56,11 +59,11 @@ public class TelegramBot extends TelegramLongPollingBot {
                 Exercise exercise = activeExercises.get(chatId);
 
                 switch (message) {
-                    case "Конец упражнения":
+                    case "Завершить":
                         finishExercise(chatId);
                         break;
 
-                    case "ЕЩЕ":
+                    case "Еще":
                         addNewSet(chatId, exercise); // Добавляем новый подход
                         break;
 
@@ -107,8 +110,70 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void myTraining(long chatId) {
-        String answer = "Данное поле находится в разработке (Список тренировок или сюда добавить программы тренировок)";
-        sendMessage(chatId, answer);
+        List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
+
+        if (exercises.isEmpty()) {
+            sendMessage(chatId, "У вас нет записанных тренировок.");
+        } else {
+            // Группируем тренировки по дате и упражнению
+            Map<String, Map<String, List<Exercise>>> exercisesByDateAndName = exercises.stream()
+                    .collect(Collectors.groupingBy(exercise -> exercise.getCreatedAt().toLocalDate().toString(),
+                            Collectors.groupingBy(Exercise::getExerciseName)));
+
+            // Форматируем дату
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
+
+            StringBuilder response = new StringBuilder("📝 *Ваши тренировки:*\n\n");
+
+            // Проходим по каждой группе тренировок (по дате)
+            for (Map.Entry<String, Map<String, List<Exercise>>> dateEntry : exercisesByDateAndName.entrySet()) {
+                String date = dateEntry.getKey();
+                Map<String, List<Exercise>> exercisesForDate = dateEntry.getValue();
+
+                // Преобразуем строку даты в более читаемый формат
+                LocalDate localDate = LocalDate.parse(date);
+                String formattedDate = localDate.format(formatter);
+                response.append("────────────────────────────────\n");
+                response.append("📅 *Дата:* ").append(formattedDate).append("\n");
+                response.append("────────────────────────────────\n");
+
+                int totalDayWeight = 0; // Общий вес за весь день
+
+                // Проходим по каждому упражнению за этот день
+                for (Map.Entry<String, List<Exercise>> exerciseEntry : exercisesForDate.entrySet()) {
+                    String exerciseName = exerciseEntry.getKey();
+                    List<Exercise> exerciseList = exerciseEntry.getValue();
+
+                    // Суммируем общий вес для одного упражнения за день
+                    int totalWeightForExercise = exerciseList.stream()
+                            .mapToInt(exercise -> exercise.getWeight() * exercise.getRepetitions())
+                            .sum();
+
+                    response.append("  \uD83E\uDD96 *Упражнение:* ").append(exerciseName).append("\n");
+
+                    // Перечисляем вес и повторения каждого подхода для этого упражнения
+                    for (Exercise exercise : exerciseList) {
+                        response.append("    \uD83D\uDC1C Вес: ").append(exercise.getWeight()).append(" кг\n")
+                                .append("    \uD83E\uDEBF Повторений: ").append(exercise.getRepetitions()).append("\n");
+                    }
+
+                    // Общий вес для этого упражнения за день
+                    response.append("  \uD83E\uDD90 *Общий вес за упражнение:* ").append(totalWeightForExercise).append(" кг\n");
+                    response.append("────────────────────────────────\n");
+
+                    // Добавляем общий вес этого упражнения к общему весу за день
+                    totalDayWeight += totalWeightForExercise;
+                }
+
+                // Разделитель для следующей даты
+                response.append("\n");
+                response.append("====================================\n");
+                response.append("   🏅 *Общий вес за день:* ").append(totalDayWeight).append(" кг\n");
+                response.append("====================================\n\n");
+            }
+
+            sendMessage(chatId, response.toString());
+        }
     }
 
 
@@ -195,7 +260,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 saveExerciseSet(chatId, exercise); // Сохраняем первую запись в БД
                 startRestTimeTimer(chatId, exercise); // Старт таймера отдыха
             } catch (NumberFormatException e) {
-                sendMessage(chatId, "Введите корректную команду ЕЩЕ или Конец упражнения");
+                sendMessage(chatId, "Введите корректную команду Еще или Завершить");
             }
         }
     }
@@ -227,7 +292,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void askForAnotherSet(long chatId) {
-        sendMessage(chatId, "Напишите 'ЕЩЕ' для продолжения или 'Конец упражнения' для завершения.");
+        sendMessage(chatId, "Напишите 'Еще' для продолжения или 'Завершить' для завершения.");
     }
 
     private void addNewSet(long chatId, Exercise exercise) {
@@ -243,7 +308,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void finishExercise(long chatId) {
         // Тренировка завершена, выходим в главное меню
-        sendMessage(chatId, "Тренировка завершена!");
+        sendMessage(chatId, "Тренировка Окончена!");
         activeExercises.remove(chatId); // Очищаем активную тренировку для пользователя
         sendMenuButtons(chatId);
     }
@@ -287,7 +352,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
-        message.setText("Добро пожаловать! Выберите команду.");
+        message.setText("Выберите команду.");
         message.setReplyMarkup(keyboardMarkup);
 
         try {
