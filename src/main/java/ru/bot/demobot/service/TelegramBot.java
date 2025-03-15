@@ -9,8 +9,10 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMar
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.bot.demobot.config.BotConfig;
+import ru.bot.demobot.model.BodyParameters;
 import ru.bot.demobot.model.Exercise;
 import ru.bot.demobot.model.User;
+import ru.bot.demobot.repository.BodyParametersRepository;
 import ru.bot.demobot.repository.ExerciseRepository;
 import ru.bot.demobot.repository.UserRepository;
 
@@ -30,10 +32,16 @@ public class TelegramBot extends TelegramLongPollingBot {
     @Autowired
     private ExerciseRepository exerciseRepository;
 
+    @Autowired
+    private BodyParametersRepository bodyParametersRepository;
+
     // Хранение активных тренировок
     private final Map<Long, Exercise> activeExercises = new HashMap<>();
     // Хранение данных о времени отдыха для каждого пользователя
     private final Map<Long, Integer> restTimes = new HashMap<>();
+
+    private final Map<Long, BodyParameters> bodyParamsInput = new HashMap<>();
+    private final Map<Long, String> userState = new HashMap<>();
 
     public TelegramBot(BotConfig config) {
         this.config = config;
@@ -54,6 +62,11 @@ public class TelegramBot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().hasText()) {
             String message = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
+
+            if (userState.containsKey(chatId)) {
+                processBodyParametersInput(chatId, message);
+                return;
+            }
 
             if (activeExercises.containsKey(chatId)) {
                 Exercise exercise = activeExercises.get(chatId);
@@ -83,7 +96,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                         helpCommandReceived(chatId);
                         break;
                     case "/settings":
-                        settingsComandReceived(chatId);
+                        startBodyParametersInput(chatId);
                         break;
                     case "📋 Мои тренировки":
                         myTraining(chatId);
@@ -91,8 +104,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                     case "📊 Статистика":
                         statisticsTraining(chatId);
                         break;
-                    case "⚙ Настройки":
-                        settingsComandReceived(chatId);
+                    case "⚙ Параметры тела":
+                        startBodyParametersInput(chatId);
                         break;
                     case "\uD83C\uDD98 Помощь":
                         helpCommandReceived(chatId);
@@ -104,10 +117,148 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-    private void statisticsTraining(long chatId) {
-        String answer = "Данное поле находится в разработке (Статистика тренировок, некоторый журнал всего выполненного)";
-        sendMessage(chatId, answer);
+    private void processBodyParametersInput(long chatId, String message) {
+        BodyParameters params = bodyParamsInput.get(chatId);
+
+        try {
+            switch (userState.get(chatId)) {
+                case "HEIGHT":
+                    params.setHeight(Integer.parseInt(message));
+                    userState.put(chatId, "WEIGHT");
+                    sendMessage(chatId, "Введите ваш вес (в кг):");
+                    break;
+
+                case "WEIGHT":
+                    params.setWeight(Integer.parseInt(message));
+                    userState.put(chatId, "BICEPS");
+                    sendMessage(chatId, "Введите размер бицепса (в см):");
+                    break;
+
+                case "BICEPS":
+                    params.setBiceps(Integer.parseInt(message));
+                    userState.put(chatId, "CHEST");
+                    sendMessage(chatId, "Введите обхват груди (в см):");
+                    break;
+
+                case "CHEST":
+                    params.setChest(Integer.parseInt(message));
+                    userState.put(chatId, "WAIST");
+                    sendMessage(chatId, "Введите обхват талии (в см):");
+                    break;
+
+                case "WAIST":
+                    params.setWaist(Integer.parseInt(message));
+                    userState.put(chatId, "HIPS");
+                    sendMessage(chatId, "Введите обхват бедер (в см):");
+                    break;
+
+                case "HIPS":
+                    params.setHips(Integer.parseInt(message));
+                    userState.put(chatId, "THIGHS");
+                    sendMessage(chatId, "Введите обхват бедра (в см):");
+                    break;
+
+                case "THIGHS":
+                    params.setThighs(Integer.parseInt(message));
+                    userState.put(chatId, "CALVES");
+                    sendMessage(chatId, "Введите обхват икр (в см):");
+                    break;
+
+                case "CALVES":
+                    params.setCalves(Integer.parseInt(message));
+                    userState.put(chatId, "SHOULDERS");
+                    sendMessage(chatId, "Введите обхват плеч (в см):");
+                    break;
+
+                case "SHOULDERS":
+                    params.setShoulders(Integer.parseInt(message));
+                    userState.put(chatId, "BUTTOCKS");
+                    sendMessage(chatId, "Введите обхват ягодиц (в см):");
+                    break;
+
+                case "BUTTOCKS":
+                    params.setButtocks(Integer.parseInt(message));
+                    params.setChatId(chatId);
+                    bodyParametersRepository.save(params);
+
+                    userState.remove(chatId);
+                    bodyParamsInput.remove(chatId);
+
+                    sendMessage(chatId, "✅ Ваши параметры успешно сохранены!");
+                    break;
+            }
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "❌ Пожалуйста, введите число.");
+        }
     }
+
+    private void startBodyParametersInput(long chatId) {
+        bodyParamsInput.put(chatId, new BodyParameters());
+        userState.put(chatId, "HEIGHT");
+        sendMessage(chatId, "Введите ваш рост (в см):");
+    }
+
+    private void statisticsTraining(long chatId) {
+        List<BodyParameters> bodyParamsList = bodyParametersRepository.findByChatId(chatId);
+
+        if (!bodyParamsList.isEmpty()) {
+            StringBuilder formattedStats = new StringBuilder("📊 *Ваша статистика параметров тела:*\n\n");
+
+            // Получаем первую и последнюю записи
+            BodyParameters firstRecord = bodyParamsList.get(0);
+            BodyParameters lastRecord = bodyParamsList.get(bodyParamsList.size() - 1);
+
+            for (BodyParameters params : bodyParamsList) {
+                formattedStats.append(String.format(
+                        "📅 *Дата:* %s\n" +
+                                "📏 *Рост:* %d см\n" +
+                                "⚖ *Вес:* %d кг\n\n" +
+                                "💪 *Бицепс:* %d см\n" +
+                                "🏋️ *Грудь:* %d см\n" +
+                                "🎯 *Талия:* %d см\n" +
+                                "🍑 *Бёдра:* %d см\n" +
+                                "🦵 *Бедро:* %d см\n" +
+                                "🦶 *Икры:* %d см\n" +
+                                "🏹 *Плечи:* %d см\n" +
+                                "🍑 *Ягодицы:* %d см\n\n",
+                        LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMMM yyyy")),
+                        params.getHeight(), params.getWeight(),
+                        params.getBiceps(), params.getChest(), params.getWaist(),
+                        params.getHips(), params.getThighs(), params.getCalves(),
+                        params.getShoulders(), params.getButtocks()
+                ));
+                formattedStats.append("———————————————\n"); // Разделитель между записями
+            }
+
+            // Добавляем расчёт изменений
+            formattedStats.append("📈 *Изменения параметров с первой записи:*\n\n");
+            formattedStats.append(String.format(
+                    "⚖ *Вес:* %d кг (%+d кг)\n" +
+                            "💪 *Бицепс:* %d см (%+d см)\n" +
+                            "🏋️ *Грудь:* %d см (%+d см)\n" +
+                            "🎯 *Талия:* %d см (%+d см)\n" +
+                            "🍑 *Бёдра:* %d см (%+d см)\n" +
+                            "🦵 *Бедро:* %d см (%+d см)\n" +
+                            "🦶 *Икры:* %d см (%+d см)\n" +
+                            "🏹 *Плечи:* %d см (%+d см)\n" +
+                            "🍑 *Ягодицы:* %d см (%+d см)\n",
+                    lastRecord.getWeight(), lastRecord.getWeight() - firstRecord.getWeight(),
+                    lastRecord.getBiceps(), lastRecord.getBiceps() - firstRecord.getBiceps(),
+                    lastRecord.getChest(), lastRecord.getChest() - firstRecord.getChest(),
+                    lastRecord.getWaist(), lastRecord.getWaist() - firstRecord.getWaist(),
+                    lastRecord.getHips(), lastRecord.getHips() - firstRecord.getHips(),
+                    lastRecord.getThighs(), lastRecord.getThighs() - firstRecord.getThighs(),
+                    lastRecord.getCalves(), lastRecord.getCalves() - firstRecord.getCalves(),
+                    lastRecord.getShoulders(), lastRecord.getShoulders() - firstRecord.getShoulders(),
+                    lastRecord.getButtocks(), lastRecord.getButtocks() - firstRecord.getButtocks()
+            ));
+
+            sendMessage(chatId, formattedStats.toString());
+        } else {
+            sendMessage(chatId, "❌ У вас пока нет сохранённых параметров тела. Введите их в разделе \"⚙ Параметры тела\".");
+        }
+    }
+
 
     private void myTraining(long chatId) {
         List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
@@ -133,9 +284,9 @@ public class TelegramBot extends TelegramLongPollingBot {
                 // Преобразуем строку даты в более читаемый формат
                 LocalDate localDate = LocalDate.parse(date);
                 String formattedDate = localDate.format(formatter);
-                response.append("────────────────────────────────\n");
+                response.append("──────────────────────────\n");
                 response.append("📅 *Дата:* ").append(formattedDate).append("\n");
-                response.append("────────────────────────────────\n");
+                response.append("──────────────────────────\n");
 
                 int totalDayWeight = 0; // Общий вес за весь день
 
@@ -159,7 +310,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
                     // Общий вес для этого упражнения за день
                     response.append("  \uD83E\uDD90 *Общий вес за упражнение:* ").append(totalWeightForExercise).append(" кг\n");
-                    response.append("────────────────────────────────\n");
+                    response.append("──────────────────────────\n");
 
                     // Добавляем общий вес этого упражнения к общему весу за день
                     totalDayWeight += totalWeightForExercise;
@@ -167,9 +318,9 @@ public class TelegramBot extends TelegramLongPollingBot {
 
                 // Разделитель для следующей даты
                 response.append("\n");
-                response.append("====================================\n");
+                response.append("==============================\n");
                 response.append("   🏅 *Общий вес за день:* ").append(totalDayWeight).append(" кг\n");
-                response.append("====================================\n\n");
+                response.append("==============================\n");
             }
 
             sendMessage(chatId, response.toString());
@@ -177,11 +328,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
 
-    private void settingsComandReceived(long chatId) {
-        String answer = "Данное поле находится в разработке (настройки профиля)";
-        sendMessage(chatId, answer);
-
-    }
 
     private void startCommandReceived(long chatId, String firstName) {
         userRepository.findByChatId(chatId).ifPresentOrElse(
@@ -214,12 +360,12 @@ public class TelegramBot extends TelegramLongPollingBot {
     private void helpCommandReceived(long chatId) {
         String answer = """
                 🤖 *Доступные команды:*
-                /start - Начать работу с ботом
-                \uD83C\uDD98 Помощь - Показать список команд
-                📋 Мои тренировки - Просмотр сохраненных тренировок
-                ➕ Добавить тренировку - Добавить новую тренировку
-                📊 Статистика - Посмотреть статистику
-                ⚙ Настройки - Настроить параметры бота
+                /start - Начать работу с ботом.
+                \uD83C\uDD98 Помощь - Показать список команд.
+                📋 Мои тренировки - Просмотр всех записанных вами тренировок с подробной статистикой.
+                ➕ Добавить тренировку - Добавить новое упражнения, с регулируемым таймером тренировки.
+                📊 Статистика - В данном разделе вы можете наблюдать за статистикой изменения параметров вашего тела.
+                ⚙ Настройки параметров - Тут вы сможете заполнить свои параметры тела, для дальнейшего отслеживания статистики.
                 
                 🏋️ *Просто нажимай на кнопки, чтобы взаимодействовать с ботом!*""";
         sendMessage(chatId, answer);
@@ -338,7 +484,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         KeyboardRow row2 = new KeyboardRow();
         row2.add("📊 Статистика");
-        row2.add("⚙ Настройки");
+        row2.add("⚙ Параметры тела");
 
         KeyboardRow row3 = new KeyboardRow();
         row3.add("\uD83C\uDD98 Помощь");

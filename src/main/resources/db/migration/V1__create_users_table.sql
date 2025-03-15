@@ -16,3 +16,19 @@ CREATE TABLE exercises (
                            rest_time INT NOT NULL,
                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE body_parameters (
+                                 id SERIAL PRIMARY KEY,
+                                 chat_id BIGINT NOT NULL REFERENCES users(chat_id),
+                                 date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 height INT NOT NULL,
+                                 weight INT NOT NULL,
+                                 biceps INT NOT NULL,
+                                 chest INT NOT NULL,
+                                 waist INT NOT NULL,
+                                 hips INT NOT NULL,
+                                 thighs INT NOT NULL,
+                                 calves INT NOT NULL,
+                                 shoulders INT NOT NULL,
+                                 buttocks INT NOT NULL
+);
