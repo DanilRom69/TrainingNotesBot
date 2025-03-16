@@ -157,61 +157,111 @@ public class TelegramBot extends TelegramLongPollingBot {
         try {
             switch (userState.get(chatId)) {
                 case "HEIGHT":
-                    params.setHeight(Integer.parseInt(message));
+                    int height = Integer.parseInt(message);
+                    if (height < 120 || height > 250) {
+                        sendMessage(chatId, "Рост должен быть в пределах от 120 до 250 см.");
+                        return;
+                    }
+                    params.setHeight(height);
                     userState.put(chatId, "WEIGHT");
                     sendMessage(chatId, "Введите ваш вес (в кг):");
                     break;
 
                 case "WEIGHT":
-                    params.setWeight(Integer.parseInt(message));
+                    int weight = Integer.parseInt(message);
+                    if (weight < 30 || weight > 500) {
+                        sendMessage(chatId, "Вес должен быть в пределах от 30 до 500 кг.");
+                        return;
+                    }
+                    params.setWeight(weight);
                     userState.put(chatId, "BICEPS");
                     sendMessage(chatId, "Введите размер бицепса (в см):");
                     break;
 
                 case "BICEPS":
-                    params.setBiceps(Integer.parseInt(message));
+                    int biceps = Integer.parseInt(message);
+                    if (biceps < 10 || biceps > 100) {  // Примерное ограничение для бицепса
+                        sendMessage(chatId, "Размер бицепса должен быть от 10 до 100 см.");
+                        return;
+                    }
+                    params.setBiceps(biceps);
                     userState.put(chatId, "CHEST");
                     sendMessage(chatId, "Введите обхват груди (в см):");
                     break;
 
                 case "CHEST":
-                    params.setChest(Integer.parseInt(message));
+                    int chest = Integer.parseInt(message);
+                    if (chest < 50 || chest > 150) {  // Ограничение для груди
+                        sendMessage(chatId, "Обхват груди должен быть от 50 до 150 см.");
+                        return;
+                    }
+                    params.setChest(chest);
                     userState.put(chatId, "WAIST");
                     sendMessage(chatId, "Введите обхват талии (в см):");
                     break;
 
                 case "WAIST":
-                    params.setWaist(Integer.parseInt(message));
+                    int waist = Integer.parseInt(message);
+                    if (waist < 50 || waist > 150) {  // Ограничение для талии
+                        sendMessage(chatId, "Обхват талии должен быть от 50 до 150 см.");
+                        return;
+                    }
+                    params.setWaist(waist);
                     userState.put(chatId, "HIPS");
                     sendMessage(chatId, "Введите обхват бедер (в см):");
                     break;
 
                 case "HIPS":
-                    params.setHips(Integer.parseInt(message));
+                    int hips = Integer.parseInt(message);
+                    if (hips < 50 || hips > 150) {  // Ограничение для бедер
+                        sendMessage(chatId, "Обхват бедер должен быть от 50 до 150 см.");
+                        return;
+                    }
+                    params.setHips(hips);
                     userState.put(chatId, "THIGHS");
                     sendMessage(chatId, "Введите обхват бедра (в см):");
                     break;
 
                 case "THIGHS":
-                    params.setThighs(Integer.parseInt(message));
+                    int thighs = Integer.parseInt(message);
+                    if (thighs < 20 || thighs > 100) {  // Ограничение для бедра
+                        sendMessage(chatId, "Обхват бедра должен быть от 20 до 100 см.");
+                        return;
+                    }
+                    params.setThighs(thighs);
                     userState.put(chatId, "CALVES");
                     sendMessage(chatId, "Введите обхват икр (в см):");
                     break;
 
                 case "CALVES":
-                    params.setCalves(Integer.parseInt(message));
+                    int calves = Integer.parseInt(message);
+                    if (calves < 20 || calves > 60) {  // Ограничение для икр
+                        sendMessage(chatId, "Обхват икр должен быть от 20 до 60 см.");
+                        return;
+                    }
+                    params.setCalves(calves);
                     userState.put(chatId, "SHOULDERS");
                     sendMessage(chatId, "Введите обхват плеч (в см):");
                     break;
 
                 case "SHOULDERS":
-                    params.setShoulders(Integer.parseInt(message));
+                    int shoulders = Integer.parseInt(message);
+                    if (shoulders < 30 || shoulders > 120) {  // Ограничение для плеч
+                        sendMessage(chatId, "Обхват плеч должен быть от 30 до 120 см.");
+                        return;
+                    }
+                    params.setShoulders(shoulders);
                     userState.put(chatId, "BUTTOCKS");
                     sendMessage(chatId, "Введите обхват ягодиц (в см):");
                     break;
 
                 case "BUTTOCKS":
-                    params.setButtocks(Integer.parseInt(message));
+                    int buttocks = Integer.parseInt(message);
+                    if (buttocks < 40 || buttocks > 130) {  // Ограничение для ягодиц
+                        sendMessage(chatId, "Обхват ягодиц должен быть от 40 до 130 см.");
+                        return;
+                    }
+                    params.setButtocks(buttocks);
                     params.setChatId(chatId);
                     bodyParametersRepository.save(params);
 
@@ -427,14 +477,24 @@ public class TelegramBot extends TelegramLongPollingBot {
             askForWeight(chatId); // Переход к запросу веса
         } else if (exercise.getWeight() == 0) {
             try {
-                exercise.setWeight(Integer.parseInt(message)); // Запись веса
+                int weight = Integer.parseInt(message); // Запись веса
+                if (weight <= 0 || weight > 500) {
+                    sendMessage(chatId, "Вес должен быть положительным и не более 500 кг.");
+                    return;
+                }
+                exercise.setWeight(weight);
                 askForRepetitions(chatId); // Переход к запросу повторений
             } catch (NumberFormatException e) {
                 sendMessage(chatId, "Введите корректное число для веса.");
             }
         } else if (exercise.getRepetitions() == 0) {
             try {
-                exercise.setRepetitions(Integer.parseInt(message)); // Запись количества повторений
+                int repetitions = Integer.parseInt(message); // Запись количества повторений
+                if (repetitions <= 0 || repetitions > 300) {
+                    sendMessage(chatId, "Количество повторений должно быть положительным и не более 300.");
+                    return;
+                }
+                exercise.setRepetitions(repetitions); // Записываем повторения
                 askForRestTime(chatId); // Переход к запросу времени отдыха
             } catch (NumberFormatException e) {
                 sendMessage(chatId, "Введите корректное количество повторений.");
@@ -442,12 +502,16 @@ public class TelegramBot extends TelegramLongPollingBot {
         } else if (exercise.getRestTime() == 0) {
             try {
                 int restTime = Integer.parseInt(message); // Запись времени отдыха
-                exercise.setRestTime(restTime);
+                if (restTime <= 0 || restTime > 60) {
+                    sendMessage(chatId, "Время отдыха должно быть положительным и не более 60 минут.");
+                    return;
+                }
+                exercise.setRestTime(restTime); // Записываем время отдыха
                 restTimes.put(chatId, restTime); // Сохраняем время отдыха
                 saveExerciseSet(chatId, exercise); // Сохраняем первую запись в БД
                 startRestTimeTimer(chatId, exercise); // Старт таймера отдыха
             } catch (NumberFormatException e) {
-                sendMessage(chatId, "Введите корректную команду Еще или Завершить");
+                sendMessage(chatId, "Введите корректное время отдыха.");
             }
         }
     }
@@ -467,6 +531,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             }
         }, exercise.getRestTime() * 60 * 1000); // Время отдыха в миллисекундах
     }
+
 
     private void askForWeight(long chatId) {
         sendMessage(chatId, "Введите вес (кг):");
