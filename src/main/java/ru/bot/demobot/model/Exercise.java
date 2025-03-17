@@ -18,7 +18,6 @@ public class Exercise {
     private int weight;
     private int repetitions;
     private int setsCount = 1;
-    private int totalWeight;
     private int restTime;
 
     private LocalDateTime createdAt = LocalDateTime.now();

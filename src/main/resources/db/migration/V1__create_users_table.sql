@@ -12,7 +12,6 @@ CREATE TABLE exercises (
                            weight INT NOT NULL,
                            repetitions INT NOT NULL,
                            sets_count INT DEFAULT 0,
-                           total_weight INT DEFAULT 0,
                            rest_time INT NOT NULL,
                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

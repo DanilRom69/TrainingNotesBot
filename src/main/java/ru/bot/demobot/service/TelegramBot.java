@@ -6,7 +6,6 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.bot.demobot.config.BotConfig;
@@ -70,7 +69,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                 return;
             }
 
-
             if (activeExercises.containsKey(chatId)) {
                 Exercise exercise = activeExercises.get(chatId);
 
@@ -80,7 +78,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                         break;
 
                     case "Еще":
-                        addNewSet(chatId, exercise); // Добавляем новый подход
+                        addNewSet(chatId,message, exercise); // Добавляем новый подход
                         break;
 
                     default:
@@ -516,6 +514,61 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    private void addNewSet(long chatId,String message, Exercise exercise) {
+        // Создаем новую запись для нового подхода с тем же названием упражнения и временем отдыха
+        if (restTimers.containsKey(chatId)) {
+            restTimers.get(chatId).cancel();
+            restTimers.remove(chatId);
+        }
+        Exercise newSet = new Exercise();
+        newSet.setExerciseName(exercise.getExerciseName());
+
+
+        // Переходим к запросу нового веса и повторений
+        activeExercises.put(chatId, newSet);
+        askForWeight(chatId);
+        if  (exercise.getWeight() == 0) {
+            try {
+                int weight = Integer.parseInt(message); // Запись веса
+                if (weight <= 0 || weight > 500) {
+                    sendMessage(chatId, "Вес должен быть положительным и не более 500 кг.");
+                    return;
+                }
+                exercise.setWeight(weight);
+                askForRepetitions(chatId); // Переход к запросу повторений
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "Введите корректное число для веса.");
+            }
+        } else if (exercise.getRepetitions() == 0) {
+            try {
+                int repetitions = Integer.parseInt(message); // Запись количества повторений
+                if (repetitions <= 0 || repetitions > 300) {
+                    sendMessage(chatId, "Количество повторений должно быть положительным и не более 300.");
+                    return;
+                }
+                exercise.setRepetitions(repetitions); // Записываем повторения
+                askForRestTime(chatId); // Переход к запросу времени отдыха
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "Введите корректное количество повторений.");
+            }
+        } else if (exercise.getRestTime() == 0) {
+            try {
+                int restTime = Integer.parseInt(message); // Запись времени отдыха
+                if (restTime <= 0 || restTime > 60) {
+                    sendMessage(chatId, "Время отдыха должно быть положительным и не более 60 минут.");
+                    return;
+                }
+                exercise.setRestTime(restTime); // Записываем время отдыха
+                restTimes.put(chatId, restTime); // Сохраняем время отдыха
+                saveExerciseSet(chatId, exercise); // Сохраняем первую запись в БД
+                startRestTimeTimer(chatId, exercise); // Старт таймера отдыха
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "Введите корректное время отдыха.");
+            }
+        }
+
+    }
+
     private void startRestTimeTimer(long chatId, Exercise exercise) {
         sendMessage(chatId, "Время отдыха началось, подождите...");
 
@@ -549,16 +602,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         sendMessage(chatId, "Напишите 'Еще' для продолжения или 'Завершить' для завершения.");
     }
 
-    private void addNewSet(long chatId, Exercise exercise) {
-        // Создаем новую запись для нового подхода с тем же названием упражнения и временем отдыха
-        Exercise newSet = new Exercise();
-        newSet.setExerciseName(exercise.getExerciseName());
-        newSet.setRestTime(exercise.getRestTime()); // Время отдыха сохраняем
-
-        // Переходим к запросу нового веса и повторений
-        activeExercises.put(chatId, newSet);
-        askForWeight(chatId);
-    }
 
     private void finishExercise(long chatId) {
         // Если есть активный таймер отдыха, отменяем его
@@ -642,8 +685,6 @@ public class TelegramBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
-
-
 
     private void sendMessage(long chatId, String textToSend) {
         if (textToSend == null || textToSend.isEmpty()) {
