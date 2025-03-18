@@ -15,10 +15,8 @@ public class Atletic {
 
     private Long chatId;
     private String atleticName;
-    private String startName;
     private int distance;
     private Float time = 0f;
-    private int restTime;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 

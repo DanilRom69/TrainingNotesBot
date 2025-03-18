@@ -98,7 +98,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                         break;
 
                     case "Еще":
-                        addNewSet(chatId, message, exercise); // Добавляем новый подход
+                        addNewSet(chatId,message, exercise); // Добавляем новый подход
                         break;
 
                     default:
@@ -161,6 +161,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                         sendMessage(chatId, "Такой команды нет, воспользуйтесь меню");
                 }
             }
+
         }
 
     }
@@ -491,6 +492,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
 
+
     private void startCommandReceived(long chatId, String firstName) {
         userRepository.findByChatId(chatId).ifPresentOrElse(
                 user -> sendMessage(chatId, "Вы уже зарегистрированы!"),
@@ -557,16 +559,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         try {
             if (atletic.getAtleticName() == null) {
                 atletic.setAtleticName(message);
-                askAtleticStart(chatId);
-                return;
-            }
-
-            if (atletic.getStartName() == null) {
-                if (message.isEmpty()) {
-                    sendMessage(chatId, "⚠ Название старта не должно быть пустым.");
-                    return;
-                }
-                atletic.setStartName(message);
                 askAtleticDistance(chatId);
                 return;
             }
@@ -588,8 +580,9 @@ public class TelegramBot extends TelegramLongPollingBot {
             if (atletic.getTime() == 0.0f) {
                 try {
                     // Меняем запятую на точку для корректного преобразования
-                    String formattedMessage = message.replace(",", ".");
-                    float time = Float.parseFloat(formattedMessage);
+
+                    float time = Float.parseFloat(message.replace(",", "."));
+                    time = (float) (Math.round(time * 1000.0) / 1000.0);
 
                     if (time <= 0 || time > 10000) {
                         sendMessage(chatId, "⚠ Время должно быть больше 0 и не больше 10000 секунд.");
@@ -614,7 +607,6 @@ public class TelegramBot extends TelegramLongPollingBot {
             Atletic saveAtletic = new Atletic();
 
             saveAtletic.setAtleticName(atletic.getAtleticName());
-            saveAtletic.setStartName(atletic.getStartName());
             saveAtletic.setDistance(atletic.getDistance());
             saveAtletic.setTime(atletic.getTime());  // Передаем уже проверенное значение
             saveAtletic.setChatId(chatId);
@@ -630,15 +622,9 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-
-    private void askAtleticStart(long chatId) {
-        sendMessage(chatId, "Введите какой старт вы используете (низкий, высокий)");
-    }
-
     private void askAtleticDistance(long chatId) {
-        sendMessage(chatId, "Введите какая дистанция в метрах");
+        sendMessage(chatId,"Введите какая дистанция в метрах");
     }
-
     private void askAtleticTime(long chatId) {
         sendMessage(chatId, "Введите время (секунды), например: 12.5 или 60.");
     }
@@ -690,7 +676,8 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
 
-    private void addNewSet(long chatId, String message, Exercise exercise) {
+
+    private void addNewSet(long chatId,String message, Exercise exercise) {
         // Создаем новую запись для нового подхода с тем же названием упражнения и временем отдыха
         if (restTimers.containsKey(chatId)) {
             restTimers.get(chatId).cancel();
@@ -702,7 +689,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         // Переходим к запросу нового веса и повторений
         activeExercises.put(chatId, newSet);
         askForWeight(chatId);
-        if (exercise.getWeight() == 0) {
+        if  (exercise.getWeight() == 0) {
             try {
                 int weight = Integer.parseInt(message); // Запись веса
                 if (weight <= 0 || weight > 500) {
@@ -861,7 +848,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-    private void statisticAtletic(long chatId) {
+    private void statisticAtletic(long chatId){
         // Получаем все тренировки пользователя по его chatId
         List<Atletic> atletics = atleticRepository.findByChatId(chatId);
 
@@ -941,8 +928,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         sendMessage(chatId, report.toString());
     }
-
-    private void statisticHeavy(long chatId) {
+    private void statisticHeavy(long chatId){
         sendMessage(chatId, "Данный раздел в разработке");
     }
 
@@ -977,7 +963,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void sendMessage(long chatId, String textToSend) {
         if (textToSend == null || textToSend.isEmpty()) {
-            return; // или установите какое-то дефолтное сообщение
+            return  ; // или установите какое-то дефолтное сообщение
         }
 
         SendMessage sendMessage = new SendMessage();
