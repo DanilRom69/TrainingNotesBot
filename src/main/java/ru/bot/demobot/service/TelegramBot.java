@@ -86,7 +86,13 @@ public class TelegramBot extends TelegramLongPollingBot {
 
             if (activeAtletic.containsKey(chatId)) {
                 Atletic atletic = activeAtletic.get(chatId);
-                processAtleticInput(chatId, message, atletic);
+                switch (message) {
+                    case "Завершить":
+                        finishAtletic(chatId);
+                        break;
+                    default:
+                        processAtleticInput(chatId, message, atletic);
+                }
                 return;
             }
 
@@ -552,6 +558,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     private void sendAthleticsTrainingForm(long chatId) {
         Atletic atletic = new Atletic();
         activeAtletic.put(chatId, atletic);
+        sendAtleticButtons(chatId);
         sendMessage(chatId, "Введите название атлетического упражнения");
     }
 
@@ -580,7 +587,6 @@ public class TelegramBot extends TelegramLongPollingBot {
             if (atletic.getTime() == 0.0f) {
                 try {
                     // Меняем запятую на точку для корректного преобразования
-
                     float time = Float.parseFloat(message.replace(",", "."));
                     time = (float) (Math.round(time * 1000.0) / 1000.0);
 
@@ -589,7 +595,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                         return;
                     }
                     atletic.setTime(time);
-                    saveExerciseSetAtletic(chatId, atletic); // Сохраняем данные
+                    saveExerciseSetAtletic(chatId, atletic);
+                    sendMenuButtons(chatId);// Сохраняем данные
                 } catch (NumberFormatException e) {
                     sendMessage(chatId, "⚠ Введите корректное число для времени, например: 12.5 или 60");
                 }
@@ -764,6 +771,13 @@ public class TelegramBot extends TelegramLongPollingBot {
         sendMessage(chatId, "Напишите 'Еще' для продолжения или 'Завершить' для завершения.");
     }
 
+    private void finishAtletic(long chatId) {
+
+        sendMessage(chatId, "Упражнение окончено!");
+        activeAtletic.remove(chatId);
+        sendMenuButtons(chatId);
+    }
+
 
     private void finishExercise(long chatId) {
         // Если есть активный таймер отдыха, отменяем его
@@ -817,6 +831,27 @@ public class TelegramBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
         message.setText("Выберите команду из меню");
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void sendAtleticButtons(long chatId) {
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true);
+
+        KeyboardRow row = new KeyboardRow();
+        row.add("Завершить");
+
+        keyboardMarkup.setKeyboard(Collections.singletonList(row));
+
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText("Для завершения упражнения нажмите Завершить");
         message.setReplyMarkup(keyboardMarkup);
 
         try {
