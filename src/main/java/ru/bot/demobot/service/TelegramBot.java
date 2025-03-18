@@ -58,6 +58,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         return config.getBotName();
     }
 
+
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -69,9 +70,9 @@ public class TelegramBot extends TelegramLongPollingBot {
                 return;
             }
 
+
             if (activeExercises.containsKey(chatId)) {
                 Exercise exercise = activeExercises.get(chatId);
-
                 switch (message) {
                     case "Завершить":
                         finishExercise(chatId);
@@ -91,7 +92,19 @@ public class TelegramBot extends TelegramLongPollingBot {
                         sendMenuButtons(chatId);
                         break;
                     case "➕ Добавить тренировку":
-                        addTraining(chatId);
+                        sendTrainingTypeSelection(chatId);
+                        break;
+                    case "Легкая атлетика":
+                        // Если выбрал "Легкая атлетика", открываем форму для легкой атлетики
+                        sendAthleticsTrainingForm(chatId);
+                        break;
+                    case "Работа с железом":
+                        // Если выбрал "Работа с железом", открываем форму для работы с железом
+                        sendStrengthTrainingForm(chatId);
+                        break;
+
+                    case "Вернуться в меню":
+                        sendMenuButtons(chatId);
                         break;
                     case "/help":
                         helpCommandReceived(chatId);
@@ -137,6 +150,37 @@ public class TelegramBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
+    }
+
+    private void sendTrainingTypeSelection(long chatId) {
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true); // Клавиатура адаптируется под экран
+        keyboardMarkup.setOneTimeKeyboard(false); // Клавиатура остается открытой
+
+        // Создаем кнопки
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add("Легкая атлетика");
+        row1.add("Работа с железом");
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add("Вернуться в меню");
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+        keyboard.add(row1);
+        keyboard.add(row2);
+
+        keyboardMarkup.setKeyboard(keyboard);
+
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText("Легкая атлетика или Работа с железом ?");
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+
     }
 
     private void processBodyParametersInput(long chatId, String message) {
@@ -457,7 +501,8 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     }
 
-    private void addTraining(long chatId) {
+
+    private void sendStrengthTrainingForm(long chatId) {
         // Меняем клавиатуру на кнопки "Еще" и "Завершить"
         sendWorkoutButtons(chatId);
         sendMessage(chatId, "Введите название упражнения:");
@@ -468,6 +513,23 @@ public class TelegramBot extends TelegramLongPollingBot {
 
 
     }
+
+    private void sendAthleticsTrainingForm(long chatId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText("Раздел в разработке");
+
+        // Здесь можно добавить кнопки или уточняющие вопросы для легкой атлетики
+        // Например, вопросы по типам упражнений, количеству повторений, времени и т.д.
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+
+    }
+
 
     private void processInput(long chatId, String message, Exercise exercise) {
         if (exercise.getExerciseName() == null) {
@@ -522,7 +584,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
         Exercise newSet = new Exercise();
         newSet.setExerciseName(exercise.getExerciseName());
-
 
         // Переходим к запросу нового веса и повторений
         activeExercises.put(chatId, newSet);
