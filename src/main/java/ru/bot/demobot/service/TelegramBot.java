@@ -9,16 +9,25 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMar
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.bot.demobot.config.BotConfig;
+import ru.bot.demobot.model.Atletic;
 import ru.bot.demobot.model.BodyParameters;
 import ru.bot.demobot.model.Exercise;
 import ru.bot.demobot.model.User;
 import ru.bot.demobot.repository.BodyParametersRepository;
 import ru.bot.demobot.repository.ExerciseRepository;
 import ru.bot.demobot.repository.UserRepository;
+import ru.bot.demobot.repository.AtleticRepository;
+
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.stream.Collectors;
 
 @Component
@@ -33,10 +42,15 @@ public class TelegramBot extends TelegramLongPollingBot {
     private ExerciseRepository exerciseRepository;
 
     @Autowired
+    private AtleticRepository atleticRepository;
+
+    @Autowired
     private BodyParametersRepository bodyParametersRepository;
 
     // Хранение активных тренировок
     private final Map<Long, Exercise> activeExercises = new HashMap<>();
+
+    private final Map<Long, Atletic> activeAtletic = new HashMap<>();
     // Хранение данных о времени отдыха для каждого пользователя
     private final Map<Long, Integer> restTimes = new HashMap<>();
     private final Map<Long, Timer> restTimers = new HashMap<>(); // Храним таймеры отдыха
@@ -70,6 +84,11 @@ public class TelegramBot extends TelegramLongPollingBot {
                 return;
             }
 
+            if (activeAtletic.containsKey(chatId)) {
+                Atletic atletic = activeAtletic.get(chatId);
+                processAtleticInput(chatId, message, atletic);
+                return;
+            }
 
             if (activeExercises.containsKey(chatId)) {
                 Exercise exercise = activeExercises.get(chatId);
@@ -79,7 +98,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                         break;
 
                     case "Еще":
-                        addNewSet(chatId,message, exercise); // Добавляем новый подход
+                        addNewSet(chatId, message, exercise); // Добавляем новый подход
                         break;
 
                     default:
@@ -102,7 +121,10 @@ public class TelegramBot extends TelegramLongPollingBot {
                         // Если выбрал "Работа с железом", открываем форму для работы с железом
                         sendStrengthTrainingForm(chatId);
                         break;
-
+                    case "Основное меню":
+                        // Если выбрал "Работа с железом", открываем форму для работы с железом
+                        sendMenuButtons(chatId);
+                        break;
                     case "Вернуться в меню":
                         sendMenuButtons(chatId);
                         break;
@@ -116,7 +138,18 @@ public class TelegramBot extends TelegramLongPollingBot {
                         myTraining(chatId);
                         break;
                     case "📊 Статистика":
+                        sendStaticsticButtons(chatId);
+                        break;
+                    case "Статистика тела":
                         statisticsTraining(chatId);
+                        break;
+
+                    case "Статистика Работы с железом":
+                        statisticHeavy(chatId);
+
+                        break;
+                    case "Статистика Атлетики":
+                        statisticAtletic(chatId);
                         break;
                     case "⚙ Параметры тела":
                         startBodyParametersInput(chatId);
@@ -129,6 +162,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 }
             }
         }
+
     }
 
     private void sendBodyParametersButtons(long chatId) {
@@ -457,7 +491,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
 
-
     private void startCommandReceived(long chatId, String firstName) {
         userRepository.findByChatId(chatId).ifPresentOrElse(
                 user -> sendMessage(chatId, "Вы уже зарегистрированы!"),
@@ -515,19 +548,99 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void sendAthleticsTrainingForm(long chatId) {
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId);
-        message.setText("Раздел в разработке");
+        Atletic atletic = new Atletic();
+        activeAtletic.put(chatId, atletic);
+        sendMessage(chatId, "Введите название атлетического упражнения");
+    }
 
-        // Здесь можно добавить кнопки или уточняющие вопросы для легкой атлетики
-        // Например, вопросы по типам упражнений, количеству повторений, времени и т.д.
-
+    private void processAtleticInput(long chatId, String message, Atletic atletic) {
         try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
+            if (atletic.getAtleticName() == null) {
+                atletic.setAtleticName(message);
+                askAtleticStart(chatId);
+                return;
+            }
 
+            if (atletic.getStartName() == null) {
+                if (message.isEmpty()) {
+                    sendMessage(chatId, "⚠ Название старта не должно быть пустым.");
+                    return;
+                }
+                atletic.setStartName(message);
+                askAtleticDistance(chatId);
+                return;
+            }
+
+            if (atletic.getDistance() == 0) {
+                try {
+                    int distance = Integer.parseInt(message);
+                    if (distance <= 0 || distance > 10000) {
+                        return;
+                    }
+                    atletic.setDistance(distance);
+                    askAtleticTime(chatId);
+                } catch (NumberFormatException e) {
+                    sendMessage(chatId, "⚠ Введите корректное число для дистанции.");
+                }
+                return;
+            }
+
+            if (atletic.getTime() == 0.0f) {
+                try {
+                    // Меняем запятую на точку для корректного преобразования
+                    String formattedMessage = message.replace(",", ".");
+                    float time = Float.parseFloat(formattedMessage);
+
+                    if (time <= 0 || time > 10000) {
+                        sendMessage(chatId, "⚠ Время должно быть больше 0 и не больше 10000 секунд.");
+                        return;
+                    }
+                    atletic.setTime(time);
+                    saveExerciseSetAtletic(chatId, atletic); // Сохраняем данные
+                } catch (NumberFormatException e) {
+                    sendMessage(chatId, "⚠ Введите корректное число для времени, например: 12.5 или 60");
+                }
+            }
+
+        } catch (Exception e) {
+            sendMessage(chatId, "❌ Произошла ошибка при вводе данных. Попробуйте ещё раз.");
+            e.printStackTrace();  // Логируем ошибку в консоль
+        }
+    }
+
+
+    private void saveExerciseSetAtletic(long chatId, Atletic atletic) {
+        try {
+            Atletic saveAtletic = new Atletic();
+
+            saveAtletic.setAtleticName(atletic.getAtleticName());
+            saveAtletic.setStartName(atletic.getStartName());
+            saveAtletic.setDistance(atletic.getDistance());
+            saveAtletic.setTime(atletic.getTime());  // Передаем уже проверенное значение
+            saveAtletic.setChatId(chatId);
+
+            atleticRepository.save(saveAtletic);  // Сохраняем в базу данных
+
+            activeAtletic.remove(chatId);  // Удаляем пользователя из списка активных тренировок
+            sendMessage(chatId, "✅ Тренировка по лёгкой атлетике успешно сохранена!");
+
+        } catch (Exception e) {
+            sendMessage(chatId, "❌ Ошибка сохранения данных. Попробуйте ещё раз.");
+            e.printStackTrace();  // Выводим ошибку в логи (для отладки)
+        }
+    }
+
+
+    private void askAtleticStart(long chatId) {
+        sendMessage(chatId, "Введите какой старт вы используете (низкий, высокий)");
+    }
+
+    private void askAtleticDistance(long chatId) {
+        sendMessage(chatId, "Введите какая дистанция в метрах");
+    }
+
+    private void askAtleticTime(long chatId) {
+        sendMessage(chatId, "Введите время (секунды), например: 12.5 или 60.");
     }
 
 
@@ -576,7 +689,8 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-    private void addNewSet(long chatId,String message, Exercise exercise) {
+
+    private void addNewSet(long chatId, String message, Exercise exercise) {
         // Создаем новую запись для нового подхода с тем же названием упражнения и временем отдыха
         if (restTimers.containsKey(chatId)) {
             restTimers.get(chatId).cancel();
@@ -588,7 +702,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         // Переходим к запросу нового веса и повторений
         activeExercises.put(chatId, newSet);
         askForWeight(chatId);
-        if  (exercise.getWeight() == 0) {
+        if (exercise.getWeight() == 0) {
             try {
                 int weight = Integer.parseInt(message); // Запись веса
                 if (weight <= 0 || weight > 500) {
@@ -747,9 +861,123 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    private void statisticAtletic(long chatId) {
+        // Получаем все тренировки пользователя по его chatId
+        List<Atletic> atletics = atleticRepository.findByChatId(chatId);
+
+        if (atletics.isEmpty()) {
+            sendMessage(chatId, "❌ У вас еще нет сохраненных тренировок.");
+            return;
+        }
+
+        // Группируем тренировки по дате
+        Map<String, List<Atletic>> groupedByDate = new HashMap<>();
+        for (Atletic atletic : atletics) {
+            String dateKey = atletic.getCreatedAt().toLocalDate().toString(); // Разбиение по датам
+            groupedByDate
+                    .computeIfAbsent(dateKey, k -> new ArrayList<>())
+                    .add(atletic);
+        }
+
+        StringBuilder report = new StringBuilder("📊 Ваши тренировки:\n\n");
+        float overallBestTime = Float.MAX_VALUE;  // Переменная для общего лучшего времени
+
+        // Формируем отчет по группам по дате
+        for (Map.Entry<String, List<Atletic>> dateEntry : groupedByDate.entrySet()) {
+            String date = dateEntry.getKey();
+            List<Atletic> atleticListForDate = dateEntry.getValue();
+
+            // Сначала выводим дату
+            report.append("📅 Дата: ").append(date).append("\n").append("=============================\n");
+
+            // Группируем тренировки по названию упражнения и дистанции
+            Map<String, Map<Integer, List<Float>>> groupedByExerciseAndDistance = new HashMap<>();
+            for (Atletic atletic : atleticListForDate) {
+                String atleticName = atletic.getAtleticName();
+                int distance = atletic.getDistance();
+
+                groupedByExerciseAndDistance
+                        .computeIfAbsent(atleticName, k -> new HashMap<>())
+                        .computeIfAbsent(distance, d -> new ArrayList<>())
+                        .add(atletic.getTime());
+            }
+
+            // Формируем строки для каждого упражнения и дистанции
+            for (Map.Entry<String, Map<Integer, List<Float>>> exerciseEntry : groupedByExerciseAndDistance.entrySet()) {
+                String atleticName = exerciseEntry.getKey();
+                Map<Integer, List<Float>> distances = exerciseEntry.getValue();
+
+                for (Map.Entry<Integer, List<Float>> distanceEntry : distances.entrySet()) {
+                    int distance = distanceEntry.getKey();
+                    List<Float> times = distanceEntry.getValue();
+
+                    // Выводим упражнение и дистанцию
+                    report.append("🏃‍♂️ Упражнение: ").append(atleticName).append("\n")
+                            .append("📏 Дистанция: ").append(distance).append(" м\n");
+
+                    // Формируем строку с временем (если несколько значений, то через запятую)
+                    String timesFormatted = times.stream()
+                            .map(time -> String.format("%.2f", time))
+                            .collect(Collectors.joining(", "));
+                    report.append("⏱ Время: ").append(timesFormatted).append("\n");
+
+                    // Находим лучшее время для этой тренировки
+                    float bestTimeForDay = times.stream()
+                            .min(Float::compare)
+                            .orElse(0f);
+
+                    // Обновляем общий лучший результат
+                    if (bestTimeForDay < overallBestTime) {
+                        overallBestTime = bestTimeForDay;
+                    }
+
+                    report.append("🏅 Лучшее время на эту дату: ").append(String.format("%.2f", bestTimeForDay)).append(" секунд\n").append("=============================\n");
+                }
+            }
+
+            // Добавляем разделитель между днями
+            report.append("\n");
+        }
+
+        sendMessage(chatId, report.toString());
+    }
+
+    private void statisticHeavy(long chatId) {
+        sendMessage(chatId, "Данный раздел в разработке");
+    }
+
+    private void sendStaticsticButtons(long chatId) {
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true);
+
+        KeyboardRow row = new KeyboardRow();
+        row.add("Статистика Атлетики");
+        row.add("Статистика Работы с железом");
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add("Статистика тела");
+        row2.add("Основное меню");
+
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+        keyboard.add(row);
+        keyboard.add(row2);
+
+        keyboardMarkup.setKeyboard(keyboard);
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText("Выберете какая статистика вам нужна");
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+
     private void sendMessage(long chatId, String textToSend) {
         if (textToSend == null || textToSend.isEmpty()) {
-            return  ; // или установите какое-то дефолтное сообщение
+            return; // или установите какое-то дефолтное сообщение
         }
 
         SendMessage sendMessage = new SendMessage();

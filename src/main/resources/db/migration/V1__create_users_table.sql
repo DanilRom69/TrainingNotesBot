@@ -32,3 +32,13 @@ CREATE TABLE body_parameters (
                                  shoulders INT NOT NULL,
                                  buttocks INT NOT NULL
 );
+
+CREATE TABLE atletic (
+                           id SERIAL PRIMARY KEY,
+                           chat_id BIGINT NOT NULL REFERENCES users(chat_id),
+                           atletic_name VARCHAR(255) NOT NULL,
+                           start_name VARCHAR(255) NOT NULL,
+                           distance INT NOT NULL,
+                           time FLOAT NOT NULL,
+                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
