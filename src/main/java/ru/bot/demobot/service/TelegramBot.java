@@ -5,7 +5,6 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -23,15 +22,10 @@ import ru.bot.demobot.repository.BodyParametersRepository;
 import ru.bot.demobot.repository.ExerciseRepository;
 import ru.bot.demobot.repository.UserRepository;
 import ru.bot.demobot.repository.AtleticRepository;
+
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
@@ -51,32 +45,27 @@ public class TelegramBot extends TelegramLongPollingBot {
     @Autowired
     private BodyParametersRepository bodyParametersRepository;
 
-    // Хранение активных тренировок
-    private final Map<Long, Exercise> activeExercises = new HashMap<>();
 
+    private final Map<Long, Exercise> activeExercises = new HashMap<>();// Хранение активных тренировок
     private final Map<Long, Atletic> activeAtletic = new HashMap<>();
-    // Хранение данных о времени отдыха для каждого пользователя
-    private final Map<Long, Integer> restTimes = new HashMap<>();
+    private final Map<Long, Integer> restTimes = new HashMap<>();// Хранение данных о времени отдыха для каждого пользователя
     private final Map<Long, Timer> restTimers = new HashMap<>(); // Храним таймеры отдыха
     private final Map<Long, BodyParameters> bodyParamsInput = new HashMap<>();
     private final Map<Long, String> userState = new HashMap<>();
+    private final Map<Long, Integer> setCounters = new HashMap<>();
 
     public TelegramBot(BotConfig config) {
         this.config = config;
     }
 
-    @Override
     public String getBotToken() {
         return config.getBotToken();
     }
 
-    @Override
     public String getBotUsername() {
         return config.getBotName();
     }
 
-
-    @Override
     public void onUpdateReceived(Update update) {
         if (update.hasCallbackQuery()) {
             CallbackQuery callbackQuery = update.getCallbackQuery();
@@ -88,7 +77,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                     startCommandReceived(chatId, update.getMessage().getChat().getFirstName()); // Метод для отображения тренировок пользователя
                     break;
                 case "myTrainings":
-                    statisticHeavy(chatId);; // Метод для отображения тренировок пользователя
+                    statisticHeavy(chatId);
+                    ; // Метод для отображения тренировок пользователя
                     break;
                 case "addExercise":
                     sendTrainingTypeSelection(chatId); // Метод для запроса на добавление упражнения
@@ -153,8 +143,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                         break;
 
                     case "Еще":
-                        addNewSet(chatId,message, exercise); // Добавляем новый подход
-                        break;
+                        addNewSet(chatId, message, exercise);
+                        break;// Добавляем новый подход
 
                     default:
                         processInput(chatId, message, exercise);
@@ -197,7 +187,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                     case "/atleticstatistic":
                         statisticAtletic(chatId);
                         break;
-
                     default:
                         sendMessage(chatId, "Такой команды нет, воспользуйтесь меню");
                 }
@@ -206,6 +195,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
 
     }
+
     private void sendCallbackQueryAnswer(String callbackQueryId) {
         try {
             // Отправляем ответ, чтобы сообщение не показало "This message was deleted"
@@ -277,9 +267,8 @@ public class TelegramBot extends TelegramLongPollingBot {
             // Останавливаем процесс и удаляем текущие данные
             userState.remove(chatId);
             bodyParamsInput.remove(chatId);
-
             sendMessage(chatId, "Процесс ввода параметров тела был отменен.");
-            removeReplyKeyboard(chatId,"Клавиатура убрана");
+            removeReplyKeyboard(chatId, "Клавиатура убрана");
             sendMenuButtons(chatId); // Возвращаем в главное меню
             return;
         }
@@ -422,56 +411,16 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         if (!bodyParamsList.isEmpty()) {
             StringBuilder formattedStats = new StringBuilder("📊 *Ваша статистика параметров тела:*\n\n");
-
             // Получаем первую и последнюю записи
             BodyParameters firstRecord = bodyParamsList.get(0);
             BodyParameters lastRecord = bodyParamsList.get(bodyParamsList.size() - 1);
-
             for (BodyParameters params : bodyParamsList) {
-                formattedStats.append(String.format(
-                        "📅 *Дата:* %s\n" +
-                                "📏 *Рост:* %d см\n" +
-                                "⚖ *Вес:* %d кг\n\n" +
-                                "💪 *Бицепс:* %d см\n" +
-                                "🏋️ *Грудь:* %d см\n" +
-                                "🎯 *Талия:* %d см\n" +
-                                "🍑 *Бёдра:* %d см\n" +
-                                "🦵 *Бедро:* %d см\n" +
-                                "🦶 *Икры:* %d см\n" +
-                                "🏹 *Плечи:* %d см\n" +
-                                "🍑 *Ягодицы:* %d см\n\n",
-                        LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMMM yyyy")),
-                        params.getHeight(), params.getWeight(),
-                        params.getBiceps(), params.getChest(), params.getWaist(),
-                        params.getHips(), params.getThighs(), params.getCalves(),
-                        params.getShoulders(), params.getButtocks()
-                ));
+                formattedStats.append(String.format("📅 *Дата:* %s\n" + "📏 *Рост:* %d см\n" + "⚖ *Вес:* %d кг\n\n" + "💪 *Бицепс:* %d см\n" + "🏋️ *Грудь:* %d см\n" + "🎯 *Талия:* %d см\n" + "🍑 *Бёдра:* %d см\n" + "🦵 *Бедро:* %d см\n" + "🦶 *Икры:* %d см\n" + "🏹 *Плечи:* %d см\n" + "🍑 *Ягодицы:* %d см\n\n", LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMMM yyyy")), params.getHeight(), params.getWeight(), params.getBiceps(), params.getChest(), params.getWaist(), params.getHips(), params.getThighs(), params.getCalves(), params.getShoulders(), params.getButtocks()));
                 formattedStats.append("———————————————\n"); // Разделитель между записями
             }
-
             // Добавляем расчёт изменений
             formattedStats.append("📈 *Изменения параметров с первой записи:*\n\n");
-            formattedStats.append(String.format(
-                    "⚖ *Вес:* %d кг (%+d кг)\n" +
-                            "💪 *Бицепс:* %d см (%+d см)\n" +
-                            "🏋️ *Грудь:* %d см (%+d см)\n" +
-                            "🎯 *Талия:* %d см (%+d см)\n" +
-                            "🍑 *Бёдра:* %d см (%+d см)\n" +
-                            "🦵 *Бедро:* %d см (%+d см)\n" +
-                            "🦶 *Икры:* %d см (%+d см)\n" +
-                            "🏹 *Плечи:* %d см (%+d см)\n" +
-                            "🍑 *Ягодицы:* %d см (%+d см)\n",
-                    lastRecord.getWeight(), lastRecord.getWeight() - firstRecord.getWeight(),
-                    lastRecord.getBiceps(), lastRecord.getBiceps() - firstRecord.getBiceps(),
-                    lastRecord.getChest(), lastRecord.getChest() - firstRecord.getChest(),
-                    lastRecord.getWaist(), lastRecord.getWaist() - firstRecord.getWaist(),
-                    lastRecord.getHips(), lastRecord.getHips() - firstRecord.getHips(),
-                    lastRecord.getThighs(), lastRecord.getThighs() - firstRecord.getThighs(),
-                    lastRecord.getCalves(), lastRecord.getCalves() - firstRecord.getCalves(),
-                    lastRecord.getShoulders(), lastRecord.getShoulders() - firstRecord.getShoulders(),
-                    lastRecord.getButtocks(), lastRecord.getButtocks() - firstRecord.getButtocks()
-            ));
-
+            formattedStats.append(String.format("⚖ *Вес:* %d кг (%+d кг)\n" + "💪 *Бицепс:* %d см (%+d см)\n" + "🏋️ *Грудь:* %d см (%+d см)\n" + "🎯 *Талия:* %d см (%+d см)\n" + "🍑 *Бёдра:* %d см (%+d см)\n" + "🦵 *Бедро:* %d см (%+d см)\n" + "🦶 *Икры:* %d см (%+d см)\n" + "🏹 *Плечи:* %d см (%+d см)\n" + "🍑 *Ягодицы:* %d см (%+d см)\n", lastRecord.getWeight(), lastRecord.getWeight() - firstRecord.getWeight(), lastRecord.getBiceps(), lastRecord.getBiceps() - firstRecord.getBiceps(), lastRecord.getChest(), lastRecord.getChest() - firstRecord.getChest(), lastRecord.getWaist(), lastRecord.getWaist() - firstRecord.getWaist(), lastRecord.getHips(), lastRecord.getHips() - firstRecord.getHips(), lastRecord.getThighs(), lastRecord.getThighs() - firstRecord.getThighs(), lastRecord.getCalves(), lastRecord.getCalves() - firstRecord.getCalves(), lastRecord.getShoulders(), lastRecord.getShoulders() - firstRecord.getShoulders(), lastRecord.getButtocks(), lastRecord.getButtocks() - firstRecord.getButtocks()));
             sendMessage(chatId, formattedStats.toString());
         } else {
             sendMessage(chatId, "❌ У вас пока нет сохранённых параметров тела. Введите их в разделе \"⚙ Параметры тела\".");
@@ -481,7 +430,6 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void myTraining(long chatId) {
         List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
-
         if (exercises.isEmpty()) {
             sendMessage(chatId, "У вас нет записанных тренировок.");
         } else {
@@ -493,8 +441,6 @@ public class TelegramBot extends TelegramLongPollingBot {
             // Форматируем дату
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
 
-            StringBuilder response = new StringBuilder("📝 *Ваши тренировки:*\n\n");
-
             // Проходим по каждой группе тренировок (по дате)
             for (Map.Entry<String, Map<String, List<Exercise>>> dateEntry : exercisesByDateAndName.entrySet()) {
                 String date = dateEntry.getKey();
@@ -503,9 +449,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                 // Преобразуем строку даты в более читаемый формат
                 LocalDate localDate = LocalDate.parse(date);
                 String formattedDate = localDate.format(formatter);
-                response.append("──────────────────────────\n");
-                response.append("📅 *Дата:* ").append(formattedDate).append("\n");
-                response.append("──────────────────────────\n");
+
+                StringBuilder response = new StringBuilder("📅 *Дата:* ").append(formattedDate).append("\n");
 
                 int totalDayWeight = 0; // Общий вес за весь день
 
@@ -514,63 +459,56 @@ public class TelegramBot extends TelegramLongPollingBot {
                     String exerciseName = exerciseEntry.getKey();
                     List<Exercise> exerciseList = exerciseEntry.getValue();
 
-                    // Суммируем общий вес для одного упражнения за день
-                    int totalWeightForExercise = exerciseList.stream()
-                            .mapToInt(exercise -> exercise.getWeight() * exercise.getRepetitions())
-                            .sum();
+                    // Группируем повторения по весу
+                    Map<Integer, List<Integer>> weightRepsMap = exerciseList.stream()
+                            .collect(Collectors.groupingBy(Exercise::getWeight, Collectors.mapping(Exercise::getRepetitions, Collectors.toList())));
 
-                    response.append("  \uD83E\uDD96 *Упражнение:* ").append(exerciseName).append("\n");
+                    response.append("\n\uD83E\uDD96 *Упражнение:* ").append(exerciseName).append("\n");
 
-                    // Перечисляем вес и повторения каждого подхода для этого упражнения
-                    for (Exercise exercise : exerciseList) {
-                        response.append("    \uD83D\uDC1C Вес: ").append(exercise.getWeight()).append(" кг\n")
-                                .append("    \uD83E\uDEBF Повторений: ").append(exercise.getRepetitions()).append("\n");
+                    // Перечисляем вес и повторения
+                    for (Map.Entry<Integer, List<Integer>> weightEntry : weightRepsMap.entrySet()) {
+                        int weight = weightEntry.getKey();
+                        List<Integer> repetitions = weightEntry.getValue();
+
+                        // Форматируем повторения через запятую
+                        String repsString = repetitions.stream()
+                                .map(String::valueOf)
+                                .collect(Collectors.joining(", "));
+
+                        response.append("  \uD83D\uDC1C Вес: ").append(weight).append(" кг\n")
+                                .append("  \uD83E\uDEBF Повторений: ").append(repsString).append("\n");
                     }
 
-                    // Общий вес для этого упражнения за день
+                    // Суммируем общий вес для одного упражнения за день
+                    int totalWeightForExercise = exerciseList.stream().mapToInt(exercise -> exercise.getWeight() * exercise.getRepetitions()).sum();
                     response.append("  \uD83E\uDD90 *Общий вес за упражнение:* ").append(totalWeightForExercise).append(" кг\n");
-                    response.append("──────────────────────────\n");
 
                     // Добавляем общий вес этого упражнения к общему весу за день
                     totalDayWeight += totalWeightForExercise;
                 }
 
-                // Разделитель для следующей даты
-                response.append("\n");
-                response.append("==============================\n");
-                response.append("   🏅 *Общий вес за день:* ").append(totalDayWeight).append(" кг\n");
-                response.append("==============================\n");
+                // Разделитель и отправка сообщения для каждого дня
+                response.append("\n==============================\n")
+                        .append("🏅 *Общий вес за день:* ").append(totalDayWeight).append(" кг\n")
+                        .append("==============================\n");
+
+                // Отправляем сообщение с тренировками за день
+                sendMessage(chatId, response.toString());
             }
 
-            sendMessage(chatId, response.toString());
             sendMenuButtons(chatId);
         }
     }
 
     private void startCommandReceived(long chatId, String firstName) {
-        userRepository.findByChatId(chatId).ifPresentOrElse(
-                user -> sendMessage(chatId, "Вы уже зарегистрированы!"),
-                () -> {
-                    User newUser = new User();
-                    newUser.setChatId(chatId);
-                    newUser.setName(firstName);
-                    userRepository.save(newUser);
-                    sendMessage(chatId, "Вы успешно зарегистрированы!");
-                }
-        );
-        String answer =
-                "\uD83C\uDFCB\uFE0F\u200D♂\uFE0F Ваш личный фитнес-ассистент в Telegram! \uD83C\uDFCB\uFE0F\u200D♀\uFE0F\n" +
-                        "\n" +
-                        "Привет! " + firstName + "!\n" + " Я – твой персональный журнал тренировок. \uD83D\uDCD3\uD83D\uDCAA\n" +
-                        "Сохраняй свои упражнения, следи за прогрессом и достигай новых высот! \uD83D\uDE80\n" +
-                        "\n" +
-                        "✨ Что я умею?\n" +
-                        "✅ Фиксировать твои тренировки \uD83C\uDFCB\uFE0F\u200D♂\uFE0F\n" +
-                        "✅ Запоминать вес, повторения и подходы" +
-                        "✅ Отслеживать прогресс и мотивировать" +
-                        "✅ Показывать историю тренировок \uD83D\uDCC5\n" +
-                        "\n" +
-                        "\uD83D\uDCA1 Просто введи данные о тренировке, и я сохраню их для тебя!";
+        userRepository.findByChatId(chatId).ifPresentOrElse(user -> sendMessage(chatId, "Вы уже зарегистрированы!"), () -> {
+            User newUser = new User();
+            newUser.setChatId(chatId);
+            newUser.setName(firstName);
+            userRepository.save(newUser);
+            sendMessage(chatId, "Вы успешно зарегистрированы!");
+        });
+        String answer = "\uD83C\uDFCB\uFE0F\u200D♂\uFE0F Ваш личный фитнес-ассистент в Telegram! \uD83C\uDFCB\uFE0F\u200D♀\uFE0F\n" + "\n" + "Привет! " + firstName + "!\n" + " Я – твой персональный журнал тренировок. \uD83D\uDCD3\uD83D\uDCAA\n" + "Сохраняй свои упражнения, следи за прогрессом и достигай новых высот! \uD83D\uDE80\n" + "\n" + "✨ Что я умею?\n" + "✅ Фиксировать твои тренировки \uD83C\uDFCB\uFE0F\u200D♂\uFE0F\n" + "✅ Запоминать вес, повторения и подходы" + "✅ Отслеживать прогресс и мотивировать" + "✅ Показывать историю тренировок \uD83D\uDCC5\n" + "\n" + "\uD83D\uDCA1 Просто введи данные о тренировке, и я сохраню их для тебя!";
         sendMessage(chatId, answer);
     }
 
@@ -675,7 +613,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void askAtleticDistance(long chatId) {
-        sendMessage(chatId,"Введите какая дистанция в метрах");
+        sendMessage(chatId, "Введите какая дистанция в метрах");
     }
 
     private void askAtleticTime(long chatId) {
@@ -727,7 +665,13 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-    private void addNewSet(long chatId,String message, Exercise exercise) {
+    private void addNewSet(long chatId, String message, Exercise exercise) {
+        setCounters.put(chatId, setCounters.getOrDefault(chatId, 1) + 1);
+        int currentSet = setCounters.get(chatId);
+
+        // Отправляем сообщение пользователю
+        sendMessage(chatId, "Подход #" + currentSet);
+
         // Создаем новую запись для нового подхода с тем же названием упражнения и временем отдыха
         if (restTimers.containsKey(chatId)) {
             restTimers.get(chatId).cancel();
@@ -739,7 +683,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         // Переходим к запросу нового веса и повторений
         activeExercises.put(chatId, newSet);
         askForWeight(chatId);
-        if  (exercise.getWeight() == 0) {
+        if (exercise.getWeight() == 0) {
             try {
                 int weight = Integer.parseInt(message); // Запись веса
                 if (weight <= 0 || weight > 500) {
@@ -814,10 +758,9 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void finishAtletic(long chatId) {
-
         sendMessage(chatId, "Упражнение окончено!");
         activeAtletic.remove(chatId);
-        removeReplyKeyboard(chatId,"Клавиатура убрана");
+        removeReplyKeyboard(chatId, "Клавиатура убрана");
         sendMenuButtons(chatId);
     }
 
@@ -826,11 +769,12 @@ public class TelegramBot extends TelegramLongPollingBot {
         if (restTimers.containsKey(chatId)) {
             restTimers.get(chatId).cancel();
             restTimers.remove(chatId);
+            setCounters.remove(chatId);
         }
 
         sendMessage(chatId, "Упражнение окончено!");
         activeExercises.remove(chatId);
-        removeReplyKeyboard(chatId,"Клавиатура убрана");// Очищаем активную тренировку для пользователя
+        removeReplyKeyboard(chatId, "Клавиатура убрана");// Очищаем активную тренировку для пользователя
         sendMenuButtons(chatId);
     }
 
@@ -842,7 +786,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         savedExercise.setRepetitions(exercise.getRepetitions()); // Количество повторений
         savedExercise.setRestTime(exercise.getRestTime());
         savedExercise.setChatId(chatId);
-
         // Добавление записи в базу
         exerciseRepository.save(savedExercise);
     }
@@ -898,9 +841,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         KeyboardRow row = new KeyboardRow();
         row.add("Завершить");
-
         keyboardMarkup.setKeyboard(Collections.singletonList(row));
-
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
         message.setText("Для завершения упражнения нажмите Завершить");
@@ -938,7 +879,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         row.add("Еще");
         row.add("Завершить");
 
-        keyboardMarkup.setKeyboard(Collections.singletonList(row));
+        keyboardMarkup.setKeyboard(Arrays.asList(row));
 
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
@@ -952,7 +893,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-    private void statisticAtletic(long chatId){
+    private void statisticAtletic(long chatId) {
         // Получаем все тренировки пользователя по его chatId
         List<Atletic> atletics = atleticRepository.findByChatId(chatId);
 
@@ -965,9 +906,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         Map<String, List<Atletic>> groupedByDate = new HashMap<>();
         for (Atletic atletic : atletics) {
             String dateKey = atletic.getCreatedAt().toLocalDate().toString(); // Разбиение по датам
-            groupedByDate
-                    .computeIfAbsent(dateKey, k -> new ArrayList<>())
-                    .add(atletic);
+            groupedByDate.computeIfAbsent(dateKey, k -> new ArrayList<>()).add(atletic);
         }
 
         StringBuilder report = new StringBuilder("📊 Ваши тренировки:\n\n");
@@ -987,10 +926,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 String atleticName = atletic.getAtleticName();
                 int distance = atletic.getDistance();
 
-                groupedByExerciseAndDistance
-                        .computeIfAbsent(atleticName, k -> new HashMap<>())
-                        .computeIfAbsent(distance, d -> new ArrayList<>())
-                        .add(atletic.getTime());
+                groupedByExerciseAndDistance.computeIfAbsent(atleticName, k -> new HashMap<>()).computeIfAbsent(distance, d -> new ArrayList<>()).add(atletic.getTime());
             }
 
             // Формируем строки для каждого упражнения и дистанции
@@ -1003,19 +939,14 @@ public class TelegramBot extends TelegramLongPollingBot {
                     List<Float> times = distanceEntry.getValue();
 
                     // Выводим упражнение и дистанцию
-                    report.append("🏃‍♂️ Упражнение: ").append(atleticName).append("\n")
-                            .append("📏 Дистанция: ").append(distance).append(" м\n");
+                    report.append("🏃‍♂️ Упражнение: ").append(atleticName).append("\n").append("📏 Дистанция: ").append(distance).append(" м\n");
 
                     // Формируем строку с временем (если несколько значений, то через запятую)
-                    String timesFormatted = times.stream()
-                            .map(time -> String.format("%.2f", time))
-                            .collect(Collectors.joining(", "));
+                    String timesFormatted = times.stream().map(time -> String.format("%.2f", time)).collect(Collectors.joining(", "));
                     report.append("⏱ Время: ").append(timesFormatted).append("\n");
 
                     // Находим лучшее время для этой тренировки
-                    float bestTimeForDay = times.stream()
-                            .min(Float::compare)
-                            .orElse(0f);
+                    float bestTimeForDay = times.stream().min(Float::compare).orElse(0f);
 
                     // Обновляем общий лучший результат
                     if (bestTimeForDay < overallBestTime) {
@@ -1025,7 +956,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                     report.append("🏅 Лучшее время на эту дату: ").append(String.format("%.2f", bestTimeForDay)).append(" секунд\n").append("=============================\n");
                 }
             }
-
             // Добавляем разделитель между днями
             report.append("\n");
         }
@@ -1034,7 +964,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         sendMenuButtons(chatId);
     }
 
-    private void statisticHeavy(long chatId){
+    private void statisticHeavy(long chatId) {
         sendMessage(chatId, "Данный раздел в разработке");
     }
 
@@ -1079,7 +1009,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void sendMessage(long chatId, String textToSend) {
         if (textToSend == null || textToSend.isEmpty()) {
-            return  ; // или установите какое-то дефолтное сообщение
+            return; // или установите какое-то дефолтное сообщение
         }
 
         SendMessage sendMessage = new SendMessage();
