@@ -36,6 +36,7 @@ import java.io.IOException;
 
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -165,15 +166,12 @@ public class TelegramBot extends TelegramLongPollingBot {
                     case "Завершить":
                         finishExercise(chatId);
                         break;
-
                     case "Еще":
                         addNewSet(chatId, message, exercise);
                         break;// Добавляем новый подход
-
                     case "Последний подход":
                         lastSet(chatId, exercise);
                         break;
-
                     default:
                         processInput(chatId, message, exercise);
                 }
@@ -604,8 +602,8 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void sendStrengthTrainingForm(long chatId) {
-        // Меняем клавиатуру на кнопки "Еще" и "Завершить"
-        sendWorkoutButtons(chatId);
+        // Меняем клавиатуру на кнопку "Завершить"
+        sendWorkoutButtons2(chatId);
         sendMessage(chatId, "Введите название упражнения:");
 
         // Создаем новое упражнение для активной тренировки
@@ -801,8 +799,8 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void startRestTimeTimer(long chatId, Exercise exercise) {
+        sendWorkoutButtons(chatId);
         sendMessage(chatId, "Время отдыха началось, подождите...");
-
         Timer timer = new Timer();
         restTimers.put(chatId, timer); // Сохраняем таймер
 
@@ -854,15 +852,30 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void saveExerciseSet(long chatId, Exercise exercise) {
-        // Сохраняем все подходы в базу данных
-        Exercise savedExercise = new Exercise();
-        savedExercise.setExerciseName(exercise.getExerciseName());
-        savedExercise.setWeight(exercise.getWeight());
-        savedExercise.setRepetitions(exercise.getRepetitions()); // Количество повторений
-        savedExercise.setRestTime(exercise.getRestTime());
-        savedExercise.setChatId(chatId);
-        // Добавление записи в базу
-        exerciseRepository.save(savedExercise);
+        // Проверяем, задано ли название упражнения
+        if (exercise.getExerciseName() == null || exercise.getExerciseName().isEmpty()) {
+            sendMessage(chatId, "⚠ Ошибка: Название упражнение не задано");
+            return;
+        }
+
+        try {
+            Exercise savedExercise = new Exercise();
+            savedExercise.setChatId(chatId);
+            savedExercise.setExerciseName(exercise.getExerciseName());
+            savedExercise.setWeight(exercise.getWeight());
+            savedExercise.setRepetitions(exercise.getRepetitions());
+            savedExercise.setRestTime(exercise.getRestTime());
+            savedExercise.setSetsCount(exercise.getSetsCount() > 0 ? exercise.getSetsCount() : 1); // По умолчанию 1 подход
+            savedExercise.setCreatedAt(LocalDateTime.now()); // Устанавливаем текущую дату и время
+
+            // Добавление записи в базу
+            exerciseRepository.save(savedExercise);
+            sendMessage(chatId, "✅ Подход сохранён: " + savedExercise.getExerciseName() +
+                    " | Вес: " + savedExercise.getWeight() + " кг | Повторения: " + savedExercise.getRepetitions());
+        } catch (Exception e) {
+            sendMessage(chatId, "❌ Ошибка при сохранении подхода. Попробуйте ещё раз.");
+            e.printStackTrace();
+        }
     }
 
     private void sendMenuButtons(long chatId) {
@@ -961,6 +974,26 @@ public class TelegramBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
         message.setText("Выберите действие: Добавить подход, последний подход без отдыха или завершить упражнение.");
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+    private void sendWorkoutButtons2(long chatId) {
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true);
+
+        KeyboardRow row = new KeyboardRow();
+        row.add("Завершить");
+
+        keyboardMarkup.setKeyboard(Arrays.asList(row));
+
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText("Выберите действие: Завершить упражнение все не сохраненные данные будут утеряны.");
         message.setReplyMarkup(keyboardMarkup);
 
         try {
