@@ -552,7 +552,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void generateWeightGraph(long chatId, Map<String, Map<String, Double>> exerciseData) {
         if (exerciseData.isEmpty()) {
-            sendMessage(chatId, "Нет данных для построения графика.");
+            sendMessage(chatId, "Нет данных для построения графика. \uD83D\uDCCA");
             return;
         }
 
@@ -578,7 +578,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             sendPhoto(chatId, chartFile, "\uD83D\uDCCA Динамика среднего веса по упражнениям");
         } catch (IOException e) {
             e.printStackTrace();
-            sendMessage(chatId, "Ошибка при создании графика.");
+            sendMessage(chatId, "Ошибка при создании графика. \uD83D\uDCCA");
         }
     }
 
@@ -682,7 +682,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     private void sendStrengthTrainingForm(long chatId) {
         // Меняем клавиатуру на кнопку "Завершить"
         sendWorkoutButtons2(chatId);
-        sendMessage(chatId, "Введите название упражнения:");
+        sendMessage(chatId, "\uD83C\uDFCB\uFE0F\u200D♀\uFE0F Введите название упражнения:");
 
         // Создаем новое упражнение для активной тренировки
         Exercise exercise = new Exercise();
@@ -694,7 +694,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         Atletic atletic = new Atletic();
         activeAtletic.put(chatId, atletic);
         sendAtleticButtons(chatId);
-        sendMessage(chatId, "Введите название атлетического упражнения");
+        sendMessage(chatId, "\uD83C\uDFC3\u200D♂\uFE0F Введите название атлетического упражнения");
     }
 
     private void processAtleticInput(long chatId, String message, Atletic atletic) {
@@ -726,14 +726,14 @@ public class TelegramBot extends TelegramLongPollingBot {
                     time = (float) (Math.round(time * 1000.0) / 1000.0);
 
                     if (time <= 0 || time > 10000) {
-                        sendMessage(chatId, "⚠ Время должно быть больше 0 и не больше 10000 секунд.");
+                        sendMessage(chatId, "❌ Время должно быть больше 0 и не больше 10000 секунд.");
                         return;
                     }
                     atletic.setTime(time);
                     saveExerciseSetAtletic(chatId, atletic);
                     sendMenuButtons(chatId);// Сохраняем данные
                 } catch (NumberFormatException e) {
-                    sendMessage(chatId, "⚠ Введите корректное число для времени, например: 12.5 или 60");
+                    sendMessage(chatId, "❌ Введите корректное число для времени, например: 12.5 или 60");
                 }
             }
 
@@ -756,7 +756,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
             activeAtletic.remove(chatId);  // Удаляем пользователя из списка активных тренировок
             sendMessage(chatId, "✅ Тренировка по лёгкой атлетике успешно сохранена!");
-            removeReplyKeyboard(chatId, "Клавиатура убрана");
+            removeReplyKeyboard(chatId, "✅ Клавиатура убрана");
         } catch (Exception e) {
             sendMessage(chatId, "❌ Ошибка сохранения данных. Попробуйте ещё раз.");
             e.printStackTrace();  // Выводим ошибку в логи (для отладки)
@@ -764,11 +764,11 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void askAtleticDistance(long chatId) {
-        sendMessage(chatId, "Введите какая дистанция в метрах");
+        sendMessage(chatId, "\uD83D\uDCDD Введите какая дистанция в метрах");
     }
 
     private void askAtleticTime(long chatId) {
-        sendMessage(chatId, "Введите время (секунды), например: 12.5 или 60.");
+        sendMessage(chatId, "\uD83D\uDCDD Введите время (секунды), например: 12.5 или 60.");
     }
 
     private void processInput(long chatId, String message, Exercise exercise) {
@@ -779,31 +779,31 @@ public class TelegramBot extends TelegramLongPollingBot {
             try {
                 int weight = Integer.parseInt(message); // Запись веса
                 if (weight <= 0 || weight > 500) {
-                    sendMessage(chatId, "Вес должен быть положительным и не более 500 кг.");
+                    sendMessage(chatId, "❌ Вес должен быть положительным и не более 500 кг.");
                     return;
                 }
                 exercise.setWeight(weight);
                 askForRepetitions(chatId); // Переход к запросу повторений
             } catch (NumberFormatException e) {
-                sendMessage(chatId, "Введите корректное число для веса.");
+                sendMessage(chatId, "\uD83D\uDCDD Введите корректное число для веса.");
             }
         } else if (exercise.getRepetitions() == 0) {
             try {
                 int repetitions = Integer.parseInt(message); // Запись количества повторений
                 if (repetitions <= 0 || repetitions > 300) {
-                    sendMessage(chatId, "Количество повторений должно быть положительным и не более 300.");
+                    sendMessage(chatId, "❌ Количество повторений должно быть положительным и не более 300.");
                     return;
                 }
                 exercise.setRepetitions(repetitions); // Записываем повторения
                 askForRestTime(chatId); // Переход к запросу времени отдыха
             } catch (NumberFormatException e) {
-                sendMessage(chatId, "Введите корректное количество повторений.");
+                sendMessage(chatId, "\uD83D\uDCDD Введите корректное количество повторений.");
             }
         } else if (exercise.getRestTime() == 0) {
             try {
                 int restTime = Integer.parseInt(message); // Запись времени отдыха
                 if (restTime <= 0 || restTime > 60) {
-                    sendMessage(chatId, "Время отдыха должно быть положительным и не более 60 минут.");
+                    sendMessage(chatId, "❌ Время отдыха должно быть положительным и не более 60 минут.");
                     return;
                 }
                 exercise.setRestTime(restTime); // Записываем время отдыха
@@ -811,7 +811,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 saveExerciseSet(chatId, exercise); // Сохраняем первую запись в БД
                 startRestTimeTimer(chatId, exercise); // Старт таймера отдыха
             } catch (NumberFormatException e) {
-                sendMessage(chatId, "Введите корректное время отдыха.");
+                sendMessage(chatId, "\uD83D\uDCDD Введите корректное время отдыха.");
             }
         }
     }
@@ -878,7 +878,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void startRestTimeTimer(long chatId, Exercise exercise) {
         sendWorkoutButtons(chatId);
-        sendMessage(chatId, "Время отдыха началось, подождите...");
+        sendMessage(chatId, "⏱ Время отдыха началось, подождите...");
         Timer timer = new Timer();
         restTimers.put(chatId, timer); // Сохраняем таймер
 
@@ -886,27 +886,27 @@ public class TelegramBot extends TelegramLongPollingBot {
             @Override
             public void run() {
                 restTimers.remove(chatId); // Удаляем таймер после завершения
-                sendMessage(chatId, "Время отдыха прошло! Хотите сделать ещё один подход?");
+                sendMessage(chatId, "\uD83D\uDCA1 Время отдыха прошло! Хотите сделать ещё один подход?");
             }
         }, exercise.getRestTime() * 60 * 1000); // Время отдыха в миллисекундах
     }
 
     private void askForWeight(long chatId) {
-        sendMessage(chatId, "Введите вес (кг):");
+        sendMessage(chatId, "\uD83D\uDCDD Введите вес (кг):");
     }
 
     private void askForRepetitions(long chatId) {
-        sendMessage(chatId, "Введите количество повторений:");
+        sendMessage(chatId, "\uD83D\uDCDD Введите количество повторений:");
     }
 
     private void askForRestTime(long chatId) {
-        sendMessage(chatId, "Введите время отдыха в минутах:");
+        sendMessage(chatId, "\uD83D\uDCDD Введите время отдыха в минутах:");
     }
 
     private void finishAtletic(long chatId) {
-        sendMessage(chatId, "Упражнение окончено!");
+        sendMessage(chatId, "✅ Упражнение окончено!");
         activeAtletic.remove(chatId);
-        removeReplyKeyboard(chatId, "Клавиатура убрана");
+        removeReplyKeyboard(chatId, "✅ Клавиатура убрана");
         sendMenuButtons(chatId);
     }
 
@@ -918,9 +918,9 @@ public class TelegramBot extends TelegramLongPollingBot {
             setCounters.remove(chatId);
         }
 
-        sendMessage(chatId, "Упражнение окончено!");
+        sendMessage(chatId, "✅ Упражнение окончено!");
         activeExercises.remove(chatId);
-        removeReplyKeyboard(chatId, "Клавиатура убрана");// Очищаем активную тренировку для пользователя
+        removeReplyKeyboard(chatId, "✅ Клавиатура убрана");// Очищаем активную тренировку для пользователя
         sendMenuButtons(chatId);
     }
 
@@ -1005,7 +1005,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         keyboardMarkup.setKeyboard(Collections.singletonList(row));
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
-        message.setText("Для завершения упражнения нажмите Завершить");
+        message.setText("\uD83D\uDCCC Для завершения упражнения нажмите Завершить");
         message.setReplyMarkup(keyboardMarkup);
 
         try {
@@ -1046,7 +1046,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
-        message.setText("Выберите действие: Добавить подход, последний подход без отдыха или завершить упражнение.");
+        message.setText("\uD83D\uDCCC Выберите действие после таймера: Добавить подход, последний подход без отдыха или завершить упражнение.");
         message.setReplyMarkup(keyboardMarkup);
 
         try {
@@ -1067,7 +1067,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
-        message.setText("Выберите действие: Завершить упражнение все не сохраненные данные будут утеряны.");
+        message.setText("\uD83D\uDCCC Выберите действие: Завершить упражнение все не сохраненные данные будут утеряны.");
         message.setReplyMarkup(keyboardMarkup);
 
         try {
@@ -1088,7 +1088,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         setCounters.put(chatId, setCounters.getOrDefault(chatId, 1) + 1);
         int currentSet = setCounters.get(chatId);
 
-        sendMessage(chatId, "Последний подход! №"+currentSet+"\n Введите вес:");
+        sendMessage(chatId, "\uD83D\uDE24 Последний подход! № "+currentSet+"\n\uD83D\uDCDD Введите вес:");
 
         // 2. Устанавливаем состояние для ожидания веса
         userState.put(chatId, "waiting_for_weight_last");
@@ -1133,7 +1133,6 @@ public class TelegramBot extends TelegramLongPollingBot {
             saveExerciseSet(chatId, exercise);
 
             // 5. Завершаем упражнение и выводим в меню
-            sendMessage(chatId, "Последний подход завершен!");
             finishExercise(chatId);
 
             // Удаляем состояние пользователя
@@ -1210,7 +1209,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         // Создаем и отправляем график
         File chartFile = createAtleticChart(dataset);
         if (chartFile != null) {
-            sendPhoto(chatId, chartFile, "Ваш прогресс на графике");
+            sendPhoto(chatId, chartFile, "Ваш прогресс на графике \uD83D\uDCCA");
         }
         sendMenuButtons(chatId);
     }
@@ -1296,7 +1295,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void statisticHeavy(long chatId) {
-        sendMessage(chatId, "Данный раздел в разработке");
+        sendMessage(chatId, "\uD83D\uDED1 Данный раздел в разработке");
     }
 
     private void sendStaticsticButtons(long chatId) {
