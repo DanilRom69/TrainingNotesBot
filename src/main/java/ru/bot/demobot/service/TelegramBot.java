@@ -31,6 +31,8 @@ import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 import org.jfree.data.category.DefaultCategoryDataset;
+
+import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 
@@ -39,6 +41,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
@@ -114,7 +117,9 @@ public class TelegramBot extends TelegramLongPollingBot {
                     statisticAtletic(chatId); // Статистика атлетика
                     break;
                 case "heavyStatistic":
-                    myTraining(chatId); // Статистика работы с железом
+                    myTraining(chatId);
+                    myTrainingSred(chatId);
+                    // Статистика работы с железом
                     break;
                 case "bodyParametersStatistic":
                     statisticsTraining(chatId); // Статистика тела
@@ -167,6 +172,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                         finishExercise(chatId);
                         break;
                     case "Еще":
+                        addNewSet(chatId, message, exercise);
+                    case "Ещё":
                         addNewSet(chatId, message, exercise);
                         break;// Добавляем новый подход
                     case "Последний подход":
@@ -502,6 +509,79 @@ public class TelegramBot extends TelegramLongPollingBot {
         sendMenuButtons(chatId);
     }
 
+    private void myTrainingSred(long chatId) {
+        List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
+        if (exercises.isEmpty()) {
+            sendMessage(chatId, "У вас нет записанных тренировок.");
+            return;
+        }
+
+        Map<String, Map<String, Double>> exerciseData = new HashMap<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
+
+        Map<LocalDate, List<Exercise>> exercisesByDate = exercises.stream()
+                .collect(Collectors.groupingBy(ex -> ex.getCreatedAt().toLocalDate()));
+
+        for (Map.Entry<LocalDate, List<Exercise>> entry : exercisesByDate.entrySet()) {
+            LocalDate date = entry.getKey();
+            String formattedDate = date.format(formatter);
+            Map<String, List<Exercise>> exercisesByName = entry.getValue().stream()
+                    .collect(Collectors.groupingBy(Exercise::getExerciseName));
+
+            for (Map.Entry<String, List<Exercise>> exerciseEntry : exercisesByName.entrySet()) {
+                String exerciseName = exerciseEntry.getKey();
+                List<Exercise> exerciseList = exerciseEntry.getValue();
+
+                int totalWeight = 0;
+                int totalReps = 0;
+
+                for (Exercise exercise : exerciseList) {
+                    totalWeight += exercise.getWeight() * exercise.getRepetitions();
+                    totalReps += exercise.getRepetitions();
+                }
+
+                double averageWeight = totalReps > 0 ? (double) totalWeight / totalReps : 0;
+                exerciseData.putIfAbsent(exerciseName, new LinkedHashMap<>());
+                exerciseData.get(exerciseName).put(formattedDate, averageWeight);
+            }
+        }
+
+        generateWeightGraph(chatId, exerciseData);
+        sendMenuButtons(chatId);
+    }
+
+    private void generateWeightGraph(long chatId, Map<String, Map<String, Double>> exerciseData) {
+        if (exerciseData.isEmpty()) {
+            sendMessage(chatId, "Нет данных для построения графика.");
+            return;
+        }
+
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        for (Map.Entry<String, Map<String, Double>> entry : exerciseData.entrySet()) {
+            String exerciseName = entry.getKey();
+            for (Map.Entry<String, Double> dataPoint : entry.getValue().entrySet()) {
+                dataset.addValue(dataPoint.getValue(), exerciseName, dataPoint.getKey());
+            }
+        }
+
+        JFreeChart lineChart = ChartFactory.createLineChart(
+                "Динамика среднего веса по упражнениям",
+                "Дата",
+                "Средний вес (кг)",
+                dataset
+        );
+        lineChart.getTitle().setFont(new Font("Arial", Font.BOLD, 16));
+
+        File chartFile = new File("weight_chart.png");
+        try {
+            ChartUtils.saveChartAsPNG(chartFile, lineChart, 800, 600);
+            sendPhoto(chatId, chartFile, "\uD83D\uDCCA Динамика среднего веса по упражнениям");
+        } catch (IOException e) {
+            e.printStackTrace();
+            sendMessage(chatId, "Ошибка при создании графика.");
+        }
+    }
+
     private void myTraining(long chatId) {
         List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
         if (exercises.isEmpty()) {
@@ -569,8 +649,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                 // Отправляем сообщение с тренировками за день
                 sendMessage(chatId, response.toString());
             }
-
-            sendMenuButtons(chatId);
         }
     }
 
@@ -678,7 +756,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
             activeAtletic.remove(chatId);  // Удаляем пользователя из списка активных тренировок
             sendMessage(chatId, "✅ Тренировка по лёгкой атлетике успешно сохранена!");
-
+            removeReplyKeyboard(chatId, "Клавиатура убрана");
         } catch (Exception e) {
             sendMessage(chatId, "❌ Ошибка сохранения данных. Попробуйте ещё раз.");
             e.printStackTrace();  // Выводим ошибку в логи (для отладки)
@@ -808,8 +886,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             @Override
             public void run() {
                 restTimers.remove(chatId); // Удаляем таймер после завершения
-                sendMessage(chatId, "Время отдыха прошло! Хотите сделать еще один подход?");
-                askForAnotherSet(chatId);
+                sendMessage(chatId, "Время отдыха прошло! Хотите сделать ещё один подход?");
             }
         }, exercise.getRestTime() * 60 * 1000); // Время отдыха в миллисекундах
     }
@@ -824,10 +901,6 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private void askForRestTime(long chatId) {
         sendMessage(chatId, "Введите время отдыха в минутах:");
-    }
-
-    private void askForAnotherSet(long chatId) {
-        sendMessage(chatId, "Напишите 'Еще' для продолжения или 'Завершить' для завершения.");
     }
 
     private void finishAtletic(long chatId) {
@@ -871,7 +944,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             // Добавление записи в базу
             exerciseRepository.save(savedExercise);
             sendMessage(chatId, "✅ Подход сохранён: " + savedExercise.getExerciseName() +
-                    " | Вес: " + savedExercise.getWeight() + " кг | Повторения: " + savedExercise.getRepetitions());
+                    "\n | Вес: " + savedExercise.getWeight() + " кг \n | Повторения: " + savedExercise.getRepetitions());
         } catch (Exception e) {
             sendMessage(chatId, "❌ Ошибка при сохранении подхода. Попробуйте ещё раз.");
             e.printStackTrace();
@@ -964,7 +1037,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         keyboardMarkup.setResizeKeyboard(true);
 
         KeyboardRow row = new KeyboardRow();
-        row.add("Еще");
+        row.add("Ещё");
         row.add("Последний подход");
         KeyboardRow row2 = new KeyboardRow();
         row2.add("Завершить");
@@ -982,6 +1055,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void sendWorkoutButtons2(long chatId) {
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
         keyboardMarkup.setResizeKeyboard(true);
@@ -1073,81 +1147,97 @@ public class TelegramBot extends TelegramLongPollingBot {
         List<Atletic> atletics = atleticRepository.findByChatId(chatId);
 
         if (atletics.isEmpty()) {
-            sendMessage(chatId, "❌ У вас еще нет сохраненных тренировок.");
+            sendMessage(chatId, "❌ У вас ещё нет сохраненных тренировок.");
             return;
         }
 
-        // Группируем тренировки по дате
-        Map<String, List<Atletic>> groupedByDate = new TreeMap<>();
-        for (Atletic atletic : atletics) {
-            String dateKey = atletic.getCreatedAt().toLocalDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
-            groupedByDate.computeIfAbsent(dateKey, k -> new ArrayList<>()).add(atletic);
-        }
+        // Группируем тренировки по дате, названию упражнения и дистанции
+        Map<String, Map<String, Map<Integer, List<Atletic>>>> atleticsByDateAndNameAndDistance = atletics.stream()
+                .collect(Collectors.groupingBy(atletic -> atletic.getCreatedAt().toLocalDate().toString(),
+                        Collectors.groupingBy(Atletic::getAtleticName,
+                                Collectors.groupingBy(Atletic::getDistance))));
 
-        StringBuilder report = new StringBuilder("📊 *Ваши тренировки:*\n\n");
-        float overallBestTime = Float.MAX_VALUE;
+        // Форматируем дату
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
 
         // Данные для графика
         DefaultCategoryDataset dataset = new DefaultCategoryDataset();
 
-        for (Map.Entry<String, List<Atletic>> dateEntry : groupedByDate.entrySet()) {
+        // Проходим по каждой группе тренировок (по дате)
+        for (Map.Entry<String, Map<String, Map<Integer, List<Atletic>>>> dateEntry : atleticsByDateAndNameAndDistance.entrySet()) {
             String date = dateEntry.getKey();
-            List<Atletic> atleticListForDate = dateEntry.getValue();
+            Map<String, Map<Integer, List<Atletic>>> atleticsForDate = dateEntry.getValue();
 
-            report.append("📅 *Дата:* ").append(date).append("\n").append("=============================\n");
+            // Преобразуем строку даты в более читаемый формат
+            LocalDate localDate = LocalDate.parse(date);
+            String formattedDate = localDate.format(formatter);
 
-            for (Atletic atletic : atleticListForDate) {
-                String atleticName = atletic.getAtleticName();
-                int distance = atletic.getDistance();
-                float time = atletic.getTime();
+            StringBuilder response = new StringBuilder("📅 *Дата:* ").append(formattedDate).append("\n");
 
-                // Добавляем данные в график
-                dataset.addValue(time, atleticName + " " + distance + "м", date);
+            // Проходим по каждому упражнению за этот день
+            for (Map.Entry<String, Map<Integer, List<Atletic>>> atleticEntry : atleticsForDate.entrySet()) {
+                String atleticName = atleticEntry.getKey();
+                Map<Integer, List<Atletic>> atleticListByDistance = atleticEntry.getValue();
 
-                // Формируем текстовый отчет
-                report.append("🏃‍♂️ *Упражнение:* ").append(atleticName).append("\n")
-                        .append("📏 *Дистанция:* ").append(distance).append(" м\n")
-                        .append("⏱ *Время:* ").append(String.format("%.2f", time)).append(" сек\n")
-                        .append("=============================\n");
+                response.append("\n🏃‍♂️ *Упражнение:* ").append(atleticName).append("\n");
 
-                // Обновляем лучший результат
-                if (time < overallBestTime) {
-                    overallBestTime = time;
+                // Проходим по каждой дистанции для этого упражнения
+                for (Map.Entry<Integer, List<Atletic>> distanceEntry : atleticListByDistance.entrySet()) {
+                    int distance = distanceEntry.getKey();
+                    List<Atletic> atleticList = distanceEntry.getValue();
+
+                    // Формируем строку времени для одного упражнения с одинаковыми дистанциями
+                    String times = atleticList.stream()
+                            .map(atletic -> String.format("%.2f сек", atletic.getTime()))
+                            .collect(Collectors.joining(", "));
+
+                    response.append("📏 *Дистанция:* ").append(distance).append(" м\n")
+                            .append("⏱ *Время:* ").append(times).append("\n");
+
+                    // Добавляем данные для графика (добавляем в график время для каждой дистанции и дня)
+                    for (Atletic atletic : atleticList) {
+                        dataset.addValue(atletic.getTime(), atleticName + " " + distance + "м", formattedDate);
+                    }
                 }
             }
-            report.append("\n");
+
+            // Разделитель и отправка сообщения для каждого дня
+            response.append("\n==============================\n");
+
+            // Отправляем сообщение с тренировками за день
+            sendMessage(chatId, response.toString());
         }
-
-        sendMessage(chatId, report.toString());
-        sendMenuButtons(chatId);
-
         // Создаем и отправляем график
         File chartFile = createAtleticChart(dataset);
         if (chartFile != null) {
-            sendPhoto(chatId, chartFile,"Ваш прогресс на графике");
+            sendPhoto(chatId, chartFile, "Ваш прогресс на графике");
         }
+        sendMenuButtons(chatId);
     }
 
     private File createAtleticChart(DefaultCategoryDataset dataset) {
+        if (dataset.getColumnCount() == 0) {
+            return null;
+        }
+
         JFreeChart lineChart = ChartFactory.createLineChart(
-                "Прогресс тренировок",
+                "Динамика времени по тренировкам",
                 "Дата",
                 "Время (сек)",
-                dataset,
-                PlotOrientation.VERTICAL,
-                true,
-                true,
-                false
+                dataset
         );
+        lineChart.getTitle().setFont(new Font("Arial", Font.BOLD, 16));
 
+        // Сохраняем график в файл
         File chartFile = new File("atletic_chart.png");
         try {
             ChartUtils.saveChartAsPNG(chartFile, lineChart, 800, 600);
             return chartFile;
         } catch (IOException e) {
             e.printStackTrace();
-            return null;
         }
+
+        return null;
     }
 
     private File generateBodyParametersChart(List<BodyParameters> bodyParamsList) {
