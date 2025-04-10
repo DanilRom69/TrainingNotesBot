@@ -1,5 +1,6 @@
 package ru.bot.demobot.service;
 
+import org.jfree.chart.axis.CategoryLabelPositions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -128,40 +129,89 @@ public class TelegramBot extends TelegramLongPollingBot {
                     sendMessage(chatId, "❌ Удаление отменено.");
                     break;
                 default:
-                    // Обработка динамических callback_data
-                    if (callbackData.startsWith("delete_confirm:")) {
-                        String date = callbackData.split(":")[1];
-                        LocalDate localDate = LocalDate.parse(date);
 
-                        InlineKeyboardMarkup confirmMarkup = new InlineKeyboardMarkup();
-                        InlineKeyboardButton yes = new InlineKeyboardButton("✅ Да");
-                        yes.setCallbackData("delete_yes:" + date);
-                        InlineKeyboardButton no = new InlineKeyboardButton("❌ Нет");
-                        no.setCallbackData("delete_no");
-                        confirmMarkup.setKeyboard(List.of(List.of(yes, no)));
+                    if (callbackData.startsWith("exercise_")) {
+                        String exerciseName = callbackData.substring("exercise_".length());
 
-                        String formattedDate = localDate.format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
-                        sendMessageWithMarkup(chatId, "Вы точно хотите удалить тренировку за *" + formattedDate + "*?", confirmMarkup);
-                    } else if (callbackData.startsWith("delete_yes:")) {
-                        String date = callbackData.split(":")[1];
-                        LocalDate localDate = LocalDate.parse(date);
-                        LocalDateTime startOfDay = localDate.atStartOfDay();
-                        LocalDateTime endOfDay = localDate.atTime(LocalTime.MAX);
+                        // Строим график только для выбранного упражнения
+                        List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
+                        if (exercises.isEmpty()) {
+                            sendMessage(chatId, "У вас нет записанных тренировок.");
+                            return;
+                        }
 
-                        exerciseRepository.deleteByChatIdAndDateRange(chatId, startOfDay, endOfDay);
+                        Map<LocalDate, Double> exerciseData = new TreeMap<>();
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
 
-                        String formattedDate = localDate.format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
-                        sendMessage(chatId, "✅ Тренировка за *" + formattedDate + "* удалена.");
-                        sendMenuButtons(chatId);
+                        // Группируем по дате
+                        Map<LocalDate, List<Exercise>> exercisesByDate = exercises.stream()
+                                .collect(Collectors.groupingBy(ex -> ex.getCreatedAt().toLocalDate()));
+
+                        // Получаем даты для данного упражнения
+                        List<LocalDate> allDates = new ArrayList<>(exercisesByDate.keySet());
+
+                        // Заполняем данные для выбранного упражнения
+                        for (LocalDate date : allDates) {
+                            List<Exercise> filtered = exercisesByDate.getOrDefault(date, Collections.emptyList())
+                                    .stream()
+                                    .filter(e -> e.getExerciseName().equals(exerciseName))
+                                    .toList();
+
+                            if (!filtered.isEmpty()) {
+                                int totalWeight = 0;
+                                int totalReps = 0;
+
+                                for (Exercise e : filtered) {
+                                    totalWeight += e.getWeight() * e.getRepetitions();
+                                    totalReps += e.getRepetitions();
+                                }
+
+                                double averageWeight = totalReps > 0 ? (double) totalWeight / totalReps : 0;
+                                exerciseData.put(date, averageWeight);
+                            }
+                        }
+
+                        // Генерируем график для выбранного упражнения
+                        generateWeightGraph(chatId, Map.of(exerciseName, exerciseData), allDates, formatter);
                     } else {
-                        sendMessage(chatId, "Неизвестная команда.");
+
+
+                        // Обработка динамических callback_data
+                        if (callbackData.startsWith("delete_confirm:")) {
+                            String date = callbackData.split(":")[1];
+                            LocalDate localDate = LocalDate.parse(date);
+
+                            InlineKeyboardMarkup confirmMarkup = new InlineKeyboardMarkup();
+                            InlineKeyboardButton yes = new InlineKeyboardButton("✅ Да");
+                            yes.setCallbackData("delete_yes:" + date);
+                            InlineKeyboardButton no = new InlineKeyboardButton("❌ Нет");
+                            no.setCallbackData("delete_no");
+                            confirmMarkup.setKeyboard(List.of(List.of(yes, no)));
+
+                            String formattedDate = localDate.format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
+                            sendMessageWithMarkup(chatId, "Вы точно хотите удалить тренировку за *" + formattedDate + "*?", confirmMarkup);
+                        } else if (callbackData.startsWith("delete_yes:")) {
+                            String date = callbackData.split(":")[1];
+                            LocalDate localDate = LocalDate.parse(date);
+                            LocalDateTime startOfDay = localDate.atStartOfDay();
+                            LocalDateTime endOfDay = localDate.atTime(LocalTime.MAX);
+
+                            exerciseRepository.deleteByChatIdAndDateRange(chatId, startOfDay, endOfDay);
+
+                            String formattedDate = localDate.format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
+                            sendMessage(chatId, "✅ Тренировка за *" + formattedDate + "* удалена.");
+                            sendMenuButtons(chatId);
+                        } else {
+                            sendMessage(chatId, "Неизвестная команда.");
+                        }
+                        break;
                     }
-                    break;
             }
 
             // Убираем "часики" и сообщение о нажатии кнопки
             sendCallbackQueryAnswer(callbackQuery.getId());
         }
+
 
         if (update.hasMessage() && update.getMessage().hasText()) {
             String message = update.getMessage().getText();
@@ -182,7 +232,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                         return;
                 }
             }
-
 
             if (activeAtletic.containsKey(chatId)) {
                 Atletic atletic = activeAtletic.get(chatId);
@@ -547,69 +596,141 @@ public class TelegramBot extends TelegramLongPollingBot {
             return;
         }
 
-        Map<String, Map<String, Double>> exerciseData = new HashMap<>();
+        // Хранение данных о тренировках для каждого упражнения
+        Map<String, Map<LocalDate, Double>> exerciseData = new HashMap<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
 
+        // Группировка всех упражнений по дате
         Map<LocalDate, List<Exercise>> exercisesByDate = exercises.stream()
                 .collect(Collectors.groupingBy(ex -> ex.getCreatedAt().toLocalDate()));
 
-        for (Map.Entry<LocalDate, List<Exercise>> entry : exercisesByDate.entrySet()) {
-            LocalDate date = entry.getKey();
-            String formattedDate = date.format(formatter);
-            Map<String, List<Exercise>> exercisesByName = entry.getValue().stream()
-                    .collect(Collectors.groupingBy(Exercise::getExerciseName));
+        // Все уникальные имена упражнений
+        Set<String> exerciseNames = exercises.stream()
+                .map(Exercise::getExerciseName)
+                .collect(Collectors.toSet());
 
-            for (Map.Entry<String, List<Exercise>> exerciseEntry : exercisesByName.entrySet()) {
-                String exerciseName = exerciseEntry.getKey();
-                List<Exercise> exerciseList = exerciseEntry.getValue();
+        // Используем TreeMap для сортировки по дате
+        TreeMap<LocalDate, List<Exercise>> sortedExercisesByDate = new TreeMap<>(exercisesByDate);
 
-                int totalWeight = 0;
-                int totalReps = 0;
+        // Все уникальные даты, отсортированные по возрастанию
+        List<LocalDate> allDates = new ArrayList<>(sortedExercisesByDate.keySet());
 
-                for (Exercise exercise : exerciseList) {
-                    totalWeight += exercise.getWeight() * exercise.getRepetitions();
-                    totalReps += exercise.getRepetitions();
+        // Формируем сообщение с кнопками
+        sendExerciseButtons(chatId, exerciseNames);
+
+        // Обработка каждого упражнения
+        for (String exerciseName : exerciseNames) {
+            Map<LocalDate, Double> dailyAverages = new TreeMap<>();
+
+            for (LocalDate date : allDates) {
+                List<Exercise> filtered = sortedExercisesByDate.getOrDefault(date, Collections.emptyList())
+                        .stream()
+                        .filter(e -> e.getExerciseName().equals(exerciseName))
+                        .toList();
+
+                if (!filtered.isEmpty()) {
+                    int totalWeight = 0;
+                    int totalReps = 0;
+
+                    for (Exercise e : filtered) {
+                        totalWeight += e.getWeight() * e.getRepetitions();
+                        totalReps += e.getRepetitions();
+                    }
+
+                    double averageWeight = totalReps > 0 ? (double) totalWeight / totalReps : 0;
+                    dailyAverages.put(date, averageWeight);
                 }
+            }
 
-                double averageWeight = totalReps > 0 ? (double) totalWeight / totalReps : 0;
-                exerciseData.putIfAbsent(exerciseName, new LinkedHashMap<>());
-                exerciseData.get(exerciseName).put(formattedDate, averageWeight);
+            // Добавляем данные для каждого упражнения
+            if (!dailyAverages.isEmpty()) {
+                exerciseData.put(exerciseName, dailyAverages);
             }
         }
 
-        generateWeightGraph(chatId, exerciseData);
+        // Отправляем данные для построения графика
         sendMenuButtons(chatId);
     }
 
-    private void generateWeightGraph(long chatId, Map<String, Map<String, Double>> exerciseData) {
+    private void sendExerciseButtons(long chatId, Set<String> exerciseNames) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (String exerciseName : exerciseNames) {
+            InlineKeyboardButton button = new InlineKeyboardButton();
+            button.setText(exerciseName);
+            button.setCallbackData("exercise_" + exerciseName); // Callback для упражнения
+
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            row.add(button);
+            rows.add(row);
+        }
+
+        markup.setKeyboard(rows);
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText("Выберите упражнение для построения графика:");
+        message.setReplyMarkup(markup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void generateWeightGraph(long chatId, Map<String, Map<LocalDate, Double>> exerciseData, List<LocalDate> allDates, DateTimeFormatter formatter) {
         if (exerciseData.isEmpty()) {
-            sendMessage(chatId, "Нет данных для построения графика. \uD83D\uDCCA");
+            sendMessage(chatId, "Нет данных для построения графика. 📊");
             return;
         }
 
-        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
-        for (Map.Entry<String, Map<String, Double>> entry : exerciseData.entrySet()) {
-            String exerciseName = entry.getKey();
-            for (Map.Entry<String, Double> dataPoint : entry.getValue().entrySet()) {
-                dataset.addValue(dataPoint.getValue(), exerciseName, dataPoint.getKey());
-            }
+        // Составляем список дат, на которых есть упражнения
+        Set<LocalDate> datesWithExercises = new TreeSet<>();
+        for (Map<LocalDate, Double> data : exerciseData.values()) {
+            datesWithExercises.addAll(data.keySet());
         }
 
-        JFreeChart lineChart = ChartFactory.createLineChart(
-                "Динамика среднего веса по упражнениям",
-                "Дата",
-                "Средний вес (кг)",
-                dataset
-        );
-        lineChart.getTitle().setFont(new Font("Arial", Font.BOLD, 16));
+        // Преобразуем Set в List и сортируем даты
+        List<LocalDate> filteredDates = new ArrayList<>(datesWithExercises);
+        filteredDates.sort(Comparator.naturalOrder()); // Сортируем даты по возрастанию
 
-        File chartFile = new File("weight_chart.png");
-        try {
-            ChartUtils.saveChartAsPNG(chartFile, lineChart, 800, 600);
-            sendPhoto(chatId, chartFile, "\uD83D\uDCCA Динамика среднего веса по упражнениям");
-        } catch (IOException e) {
-            e.printStackTrace();
-            sendMessage(chatId, "Ошибка при создании графика. \uD83D\uDCCA");
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+
+        // Заполнение данных для графика
+        for (Map.Entry<String, Map<LocalDate, Double>> entry : exerciseData.entrySet()) {
+            String exerciseName = entry.getKey();
+            Map<LocalDate, Double> data = entry.getValue();
+
+            // Добавляем данные по каждой дате, но только для тех дат, которые есть в filteredDates
+            for (LocalDate date : filteredDates) {
+                String formattedDate = date.format(formatter);
+                double value = data.getOrDefault(date, 0.0); // Если нет данных на эту дату, берем 0.0
+
+                dataset.addValue(value, exerciseName, formattedDate);
+            }
+
+            // Построение графика для каждого упражнения
+            JFreeChart lineChart = ChartFactory.createLineChart(
+                    "Динамика среднего веса по упражненю : " + exerciseName, // Используем название упражнения в заголовке
+                    "Дата",
+                    "Средний вес (кг)",
+                    dataset
+            );
+
+            lineChart.getTitle().setFont(new Font("Arial", Font.BOLD, 16));
+            lineChart.getCategoryPlot().getDomainAxis().setCategoryLabelPositions(
+                    CategoryLabelPositions.createUpRotationLabelPositions(Math.PI / 6.0)
+            ); // Немного поворачиваем подписи по X, если их много
+
+            File chartFile = new File("weight_chart_" + exerciseName + ".png"); // Имя файла с названием упражнения
+            try {
+                ChartUtils.saveChartAsPNG(chartFile, lineChart, 800, 600);
+                sendPhoto(chatId, chartFile, "📊 Динамика среднего веса по упражненю : " + exerciseName); // Заголовок с названием упражнения
+            } catch (IOException e) {
+                e.printStackTrace();
+                sendMessage(chatId, "Ошибка при создании графика. 📊");
+            }
         }
     }
 
@@ -965,7 +1086,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             restTimers.remove(chatId);
             setCounters.remove(chatId);
         }
-
+        setCounters.remove(chatId);
         sendMessage(chatId, "✅ Упражнение окончено!");
         activeExercises.remove(chatId);
         removeReplyKeyboard(chatId, "✅ Клавиатура убрана");// Очищаем активную тренировку для пользователя
