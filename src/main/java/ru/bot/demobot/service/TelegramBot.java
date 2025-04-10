@@ -41,7 +41,9 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.Month;
 import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -119,7 +121,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                     statisticAtletic(chatId);
                     break;
                 case "heavyStatistic":
-                    myTraining(chatId);
+                    sendMonthSelection(chatId);
                     myTrainingSred(chatId);
                     break;
                 case "bodyParametersStatistic":
@@ -175,9 +177,11 @@ public class TelegramBot extends TelegramLongPollingBot {
                         generateWeightGraph(chatId, Map.of(exerciseName, exerciseData), allDates, formatter);
                     } else {
 
-
                         // Обработка динамических callback_data
-                        if (callbackData.startsWith("delete_confirm:")) {
+                        if (callbackData.startsWith("select_month:")) {
+                            int month = Integer.parseInt(callbackData.split(":")[1]);
+                            showTrainingsForMonth(chatId, month);
+                        }else if (callbackData.startsWith("delete_confirm:")) {
                             String date = callbackData.split(":")[1];
                             LocalDate localDate = LocalDate.parse(date);
 
@@ -669,7 +673,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         markup.setKeyboard(rows);
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
-        message.setText("Выберите упражнение для построения графика:");
+        message.setText("\uD83D\uDCCA Выберите упражнение для построения графика:");
         message.setReplyMarkup(markup);
 
         try {
@@ -770,17 +774,20 @@ public class TelegramBot extends TelegramLongPollingBot {
 
                     response.append("\n\uD83E\uDD96 *Упражнение:* ").append(exerciseName).append("\n");
 
-                    for (Map.Entry<Integer, List<Integer>> weightEntry : weightRepsMap.entrySet()) {
-                        int weight = weightEntry.getKey();
-                        List<Integer> repetitions = weightEntry.getValue();
+                    // Сортировка по весу в порядке возрастания
+                    weightRepsMap.entrySet().stream()
+                            .sorted(Map.Entry.comparingByKey()) // Сортировка по весу
+                            .forEach(weightEntry -> {
+                                int weight = weightEntry.getKey();
+                                List<Integer> repetitions = weightEntry.getValue();
 
-                        String repsString = repetitions.stream()
-                                .map(String::valueOf)
-                                .collect(Collectors.joining(", "));
+                                String repsString = repetitions.stream()
+                                        .map(String::valueOf)
+                                        .collect(Collectors.joining(", "));
 
-                        response.append("  \uD83D\uDC1C Вес: ").append(weight).append(" кг\n")
-                                .append("  \uD83E\uDEBF Повторений: ").append(repsString).append("\n");
-                    }
+                                response.append("  \uD83D\uDC1C Вес: ").append(weight).append(" кг\n")
+                                        .append("  \uD83E\uDEBF Повторений: ").append(repsString).append("\n");
+                            });
 
                     int totalWeightForExercise = exerciseList.stream()
                             .mapToInt(ex -> ex.getWeight() * ex.getRepetitions())
@@ -804,6 +811,111 @@ public class TelegramBot extends TelegramLongPollingBot {
                 markup.setKeyboard(List.of(List.of(deleteButton)));
                 sendMessageWithMarkup(chatId, response.toString(), markup);
             }
+        }
+    }
+
+    public void sendMonthSelection(long chatId) {
+        List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
+        if (exercises.isEmpty()) {
+            sendMessage(chatId, "У вас нет записанных тренировок.");
+            return;
+        }
+
+        // Сгруппируем тренировки по месяцу
+        Map<Integer, List<Exercise>> exercisesByMonth = exercises.stream()
+                .collect(Collectors.groupingBy(ex -> ex.getCreatedAt().getMonthValue()));
+
+        // Создаем кнопки для месяцев
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> keyboard = new ArrayList<>();
+
+        for (Integer month : exercisesByMonth.keySet()) {
+            String monthName = Month.of(month).getDisplayName(TextStyle.FULL, Locale.getDefault());
+            InlineKeyboardButton monthButton = new InlineKeyboardButton();
+            monthButton.setText(monthName);
+            monthButton.setCallbackData("select_month:" + month);
+
+            keyboard.add(List.of(monthButton));
+        }
+
+        markup.setKeyboard(keyboard);
+        sendMessageWithMarkup(chatId, "Выберите месяц для просмотра статистики:", markup);
+    }
+
+    public void showTrainingsForMonth(long chatId, int month) {
+        List<Exercise> exercises = exerciseRepository.findByChatId(chatId);
+        if (exercises.isEmpty()) {
+            sendMessage(chatId, "У вас нет записанных тренировок.");
+            return;
+        }
+
+        // Фильтруем тренировки по выбранному месяцу
+        Map<String, Map<String, List<Exercise>>> exercisesByDateAndName = exercises.stream()
+                .filter(ex -> ex.getCreatedAt().getMonthValue() == month)
+                .collect(Collectors.groupingBy(ex -> ex.getCreatedAt().toLocalDate().toString(),
+                        Collectors.groupingBy(Exercise::getExerciseName)));
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMMM yyyy");
+
+        List<Map.Entry<String, Map<String, List<Exercise>>>> sortedEntries = new ArrayList<>(exercisesByDateAndName.entrySet());
+        sortedEntries.sort(Comparator.comparing(e -> LocalDate.parse(e.getKey())));
+
+        for (Map.Entry<String, Map<String, List<Exercise>>> dateEntry : sortedEntries) {
+            String date = dateEntry.getKey();
+            Map<String, List<Exercise>> exercisesForDate = dateEntry.getValue();
+
+            LocalDate localDate = LocalDate.parse(date);
+            String formattedDate = localDate.format(formatter);
+
+            StringBuilder response = new StringBuilder("📅 *Дата:* ").append(formattedDate).append("\n");
+
+            int totalDayWeight = 0;
+
+            for (Map.Entry<String, List<Exercise>> exerciseEntry : exercisesForDate.entrySet()) {
+                String exerciseName = exerciseEntry.getKey();
+                List<Exercise> exerciseList = exerciseEntry.getValue();
+
+                Map<Integer, List<Integer>> weightRepsMap = exerciseList.stream()
+                        .collect(Collectors.groupingBy(Exercise::getWeight,
+                                Collectors.mapping(Exercise::getRepetitions, Collectors.toList())));
+
+                response.append("\n\uD83E\uDD96 *Упражнение:* ").append(exerciseName).append("\n");
+
+                weightRepsMap.entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .forEach(weightEntry -> {
+                            int weight = weightEntry.getKey();
+                            List<Integer> repetitions = weightEntry.getValue();
+
+                            String repsString = repetitions.stream()
+                                    .map(String::valueOf)
+                                    .collect(Collectors.joining(", "));
+
+                            response.append("  \uD83D\uDC1C Вес: ").append(weight).append(" кг\n")
+                                    .append("  \uD83E\uDEBF Повторений: ").append(repsString).append("\n");
+                        });
+
+                int totalWeightForExercise = exerciseList.stream()
+                        .mapToInt(ex -> ex.getWeight() * ex.getRepetitions())
+                        .sum();
+
+                response.append("  \uD83E\uDD90 *Общий вес за упражнение:* ").append(totalWeightForExercise).append(" кг\n");
+
+                totalDayWeight += totalWeightForExercise;
+            }
+
+            response.append("\n==============================\n")
+                    .append("🏅 *Общий вес за день:* ").append(totalDayWeight).append(" кг\n")
+                    .append("==============================");
+
+            // Добавляем кнопку "Удалить тренировку"
+            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+            InlineKeyboardButton deleteButton = new InlineKeyboardButton();
+            deleteButton.setText("🗑 Удалить тренировку");
+            deleteButton.setCallbackData("delete_confirm:" + date); // передаем дату
+
+            markup.setKeyboard(List.of(List.of(deleteButton)));
+            sendMessageWithMarkup(chatId, response.toString(), markup);
         }
     }
 
